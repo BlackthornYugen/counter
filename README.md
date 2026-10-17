@@ -23,11 +23,29 @@ Room access is managed through cryptographically hashed UUID tokens stored in **
 
 ---
 
+## 📂 Repository Structure
+
+```
+├── android/            # Native Android Client App (Kotlin & Jetpack Compose)
+├── server/             # Python Real-Time Counter Server (FastAPI, WebSockets, SSE, SQLite)
+│   ├── counter/        # Core server package (api, db, hub, models, service)
+│   ├── tests/          # Comprehensive async pytest suite
+│   ├── main.py         # Server CLI entry point
+│   └── pyproject.toml  # Python project dependencies managed via uv
+└── web/                # Standalone Web Dashboard (HTML5, Vanilla CSS, Vanilla JS)
+    ├── index.html      # Responsive dashboard interface
+    ├── style.css       # Design system & animations
+    └── app.js          # WebSockets & SSE client logic with hashtag routing
+```
+
+---
+
 ## 🚀 Quick Start with `uv`
 
 ### 1. Run the Server
 
 ```bash
+cd server
 uv run python main.py
 ```
 
@@ -38,12 +56,14 @@ The server binds to `http://0.0.0.0:8000` by default:
 
 Custom port or host:
 ```bash
+cd server
 uv run python main.py --host 127.0.0.1 --port 9000
 ```
 
 ### 2. Run Test Suite
 
 ```bash
+cd server
 uv run pytest -v
 ```
 

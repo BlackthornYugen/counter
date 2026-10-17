@@ -37,15 +37,26 @@ app.add_middleware(
 # Mount API router
 app.include_router(api_router)
 
-# Mount static assets directory
+# Mount static assets directory (web/ folder)
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+app.mount("/web", StaticFiles(directory=str(STATIC_DIR)), name="web")
 
 
 @app.get("/", include_in_schema=False)
 async def serve_index() -> FileResponse:
     index_file = STATIC_DIR / "index.html"
     return FileResponse(str(index_file))
+
+
+@app.get("/style.css", include_in_schema=False)
+async def serve_css() -> FileResponse:
+    return FileResponse(str(STATIC_DIR / "style.css"))
+
+
+@app.get("/app.js", include_in_schema=False)
+async def serve_js() -> FileResponse:
+    return FileResponse(str(STATIC_DIR / "app.js"))
 
 
 @app.get("/health", tags=["system"])
