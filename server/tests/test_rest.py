@@ -22,7 +22,6 @@ async def test_rest_register_3_uuids():
         admin = str(uuid.uuid4())
 
         payload = {
-            "name": "REST 3 UUIDs",
             "read_only_uuid": ro,
             "read_write_uuid": rw,
             "admin_uuid": admin,
@@ -44,7 +43,6 @@ async def test_rest_register_2_uuids():
         admin = str(uuid.uuid4())
 
         payload = {
-            "name": "REST 2 UUIDs",
             "readOnlyUUID": ro,
             "adminUUID": admin,
         }

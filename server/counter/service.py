@@ -70,7 +70,6 @@ async def register_async(
     second_uuid: str | None = None,
     third_uuid: str | None = None,
     *,
-    name: str = "Counter Room",
     initial_value: int = 0,
     db_path: str | None = None,
 ) -> dict[str, Any]:
@@ -138,7 +137,6 @@ async def register_async(
     counter_id = str(uuid.uuid4())
     record = await insert_counter(
         counter_id=counter_id,
-        name=name,
         token_role_map=token_role_map,
         initial_value=initial_value,
         db_path=db_path,
@@ -158,7 +156,6 @@ async def register_async(
 
     return {
         "counter_id": counter_id,
-        "name": name,
         "value": initial_value,
         "roles": roles_dict,
         "token_hashes": token_hashes,
@@ -171,7 +168,6 @@ def register(
     second_uuid: str | None = None,
     third_uuid: str | None = None,
     *,
-    name: str = "Counter Room",
     initial_value: int = 0,
     db_path: str | None = None,
 ) -> dict[str, Any]:
@@ -189,7 +185,6 @@ def register(
         read_only_uuid=read_only_uuid,
         second_uuid=second_uuid,
         third_uuid=third_uuid,
-        name=name,
         initial_value=initial_value,
         db_path=db_path,
     )
@@ -212,7 +207,6 @@ async def get_counter_info_by_token(token: str, db_path: str | None = None) -> d
     permissions = ROLE_PERMISSIONS[role]
     return {
         "counter_id": counter["id"],
-        "name": counter["name"],
         "value": counter["value"],
         "access": role,
         "permissions": permissions,

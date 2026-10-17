@@ -29,7 +29,6 @@ class RegisterRequest(BaseModel):
     readOnlyUUID: str | None = Field(default=None, alias="read_only_uuid")
     readWriteUUID: str | None = Field(default=None, alias="read_write_uuid")
     adminUUID: str | None = Field(default=None, alias="admin_uuid")
-    name: str = Field(default="Counter Room")
     initial_value: int = Field(default=0)
 
     model_config = {
@@ -69,7 +68,6 @@ class RegisterRequest(BaseModel):
 
 class RegisterResponse(BaseModel):
     counter_id: str
-    name: str
     value: int
     roles: dict[str, str]
     token_hashes: dict[str, str]
@@ -78,7 +76,6 @@ class RegisterResponse(BaseModel):
 
 class CounterInfoResponse(BaseModel):
     counter_id: str
-    name: str
     value: int
     access: str
     permissions: dict[str, bool]

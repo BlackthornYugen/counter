@@ -220,7 +220,8 @@ async function connectWithToken(token, updateHash = true) {
     activeTokens[currentRole] = cleaned;
 
     document.getElementById("input-connect-uuid").value = cleaned;
-    document.getElementById("counter-room-name").textContent = data.name || "Counter Room";
+    const statusEl = document.getElementById("counter-room-status");
+    if (statusEl) statusEl.textContent = `Counter ${data.counter_id.substring(0, 8)}`;
     updateCounterDisplay(data.value);
     applyRolePermissions(currentRole);
 
@@ -326,7 +327,8 @@ function connectRoomSSE(token) {
 function handleIncomingMessage(data) {
   if (data.type === "connected") {
     updateCounterDisplay(data.value);
-    document.getElementById("counter-room-name").textContent = data.counter_name || "Counter Room";
+    const statusEl = document.getElementById("counter-room-status");
+    if (statusEl) statusEl.textContent = `Counter ${data.counter_id.substring(0, 8)}`;
     if (data.recent_events && Array.isArray(data.recent_events)) {
       document.getElementById("stream-feed").innerHTML = "";
       data.recent_events.forEach(ev => addEventToStream(ev));
@@ -338,7 +340,8 @@ function handleIncomingMessage(data) {
     showToast(`Counter room was deleted: ${data.message || ''}`, "error");
     disconnectRoom();
     applyRolePermissions("none");
-    document.getElementById("counter-room-name").textContent = "Room Deleted";
+    const statusEl = document.getElementById("counter-room-status");
+    if (statusEl) statusEl.textContent = "Room Deleted";
     updateCounterDisplay(0);
     const activeBar = document.getElementById("active-link-bar");
     if (activeBar) activeBar.style.display = "none";
@@ -415,7 +418,8 @@ async function deleteCounterRoom() {
     showToast("Counter room deleted successfully.", "success");
     disconnectRoom();
     applyRolePermissions("none");
-    document.getElementById("counter-room-name").textContent = "Room Deleted";
+    const statusEl = document.getElementById("counter-room-status");
+    if (statusEl) statusEl.textContent = "Room Deleted";
     updateCounterDisplay(0);
     const activeBar = document.getElementById("active-link-bar");
     if (activeBar) activeBar.style.display = "none";
@@ -518,7 +522,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Register Form Submit
   document.getElementById("btn-register").addEventListener("click", async () => {
-    const name = document.getElementById("reg-name").value.trim() || "Counter Room";
     const ro = document.getElementById("reg-ro-uuid").value.trim();
     const admin = document.getElementById("reg-admin-uuid").value.trim();
     const rw = currentMode === "3uuid" ? document.getElementById("reg-rw-uuid").value.trim() : null;
@@ -543,7 +546,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
       const payload = {
-        name: name,
         read_only_uuid: ro,
         admin_uuid: admin,
       };
@@ -760,7 +762,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Initial State: inputs start blank, controls start disabled
   applyRolePermissions("none");
-  document.getElementById("counter-room-name").textContent = "No Room Connected";
+  const initialStatusEl = document.getElementById("counter-room-status");
+  if (initialStatusEl) initialStatusEl.textContent = "No Room Connected";
   updateStatusPill("disconnected", "Not Connected");
 
   // Check if URL has hashtag #<uuid> on initial load

@@ -37,7 +37,6 @@ async def test_db_init_and_insert(tmp_path):
 
     result = await insert_counter(
         counter_id=cid,
-        name="Test Room",
         token_role_map=tokens,
         initial_value=10,
         db_path=db_file,
@@ -73,7 +72,7 @@ async def test_resolve_token(tmp_path):
         admin_uuid: "admin",
     }
 
-    await insert_counter(cid, "Multi Role Counter", tokens, initial_value=0, db_path=db_file)
+    await insert_counter(cid, tokens, initial_value=0, db_path=db_file)
 
     # Test resolving each token
     res_ro = await resolve_token(ro_uuid, db_path=db_file)
@@ -104,7 +103,7 @@ async def test_update_counter_and_events(tmp_path):
 
     cid = str(uuid.uuid4())
     admin_uuid = str(uuid.uuid4())
-    await insert_counter(cid, "Counter", {admin_uuid: "admin"}, initial_value=0, db_path=db_file)
+    await insert_counter(cid, {admin_uuid: "admin"}, initial_value=0, db_path=db_file)
 
     # Increment
     ev1 = await update_counter_value(cid, "increment", delta=1, new_value=1, role="admin", db_path=db_file)

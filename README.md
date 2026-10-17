@@ -81,7 +81,6 @@ room_3 = register(
     "c768f56e-8ff4-4363-8822-79ee8ca6eef4",  # readOnlyUUID
     "e2244bb4-0997-4ef8-8280-9dfbf2ba1022",  # readWriteUUID
     "523a8867-b50a-4a25-a1c1-40c42be279ab",  # adminUUID
-    name="Production Metrics"
 )
 
 # Or register counter room with 2 UUIDs:
@@ -110,7 +109,6 @@ result = await register_async(readOnlyUUID, adminUUID)
 Payload (3 UUIDs):
 ```json
 {
-  "name": "Live Visitors",
   "read_only_uuid": "c768f56e-8ff4-4363-8822-79ee8ca6eef4",
   "read_write_uuid": "e2244bb4-0997-4ef8-8280-9dfbf2ba1022",
   "admin_uuid": "523a8867-b50a-4a25-a1c1-40c42be279ab",
@@ -123,7 +121,6 @@ Response:
 ```json
 {
   "counter_id": "f8577a76-0b1d-4eb7-a06d-476c8c4a4e10",
-  "name": "Live Visitors",
   "value": 0,
   "roles": {
     "read_only": "c768f56e-8ff4-4363-8822-79ee8ca6eef4",
@@ -176,7 +173,6 @@ The server validates the token hash and immediately responds with connection sta
   "type": "connected",
   "protocol": "websocket",
   "counter_id": "f8577a76-0b1d-4eb7-a06d-476c8c4a4e10",
-  "counter_name": "Live Visitors",
   "access": "read_write",
   "permissions": {
     "can_read": true,
@@ -260,7 +256,6 @@ The database uses SQLite with 3 tables:
 ```sql
 CREATE TABLE counters (
     id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
     value INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL

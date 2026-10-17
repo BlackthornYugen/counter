@@ -45,7 +45,6 @@ async def api_register_counter(payload: RegisterRequest) -> RegisterResponse:
             read_only_uuid=payload.readOnlyUUID,
             second_uuid=payload.readWriteUUID if payload.readWriteUUID else payload.adminUUID,
             third_uuid=payload.adminUUID if payload.readWriteUUID else None,
-            name=payload.name,
             initial_value=payload.initial_value,
         )
         return RegisterResponse(**result)
@@ -136,7 +135,6 @@ async def sse_event_generator(token: str) -> AsyncGenerator[str, None]:
             "type": "connected",
             "protocol": "sse",
             "counter_id": counter_id,
-            "counter_name": counter["name"],
             "access": role,
             "permissions": ROLE_PERMISSIONS[role],
             "value": counter["value"],
@@ -231,7 +229,6 @@ async def _handle_websocket(websocket: WebSocket, effective_token: str | None) -
             "type": "connected",
             "protocol": "websocket",
             "counter_id": counter_id,
-            "counter_name": counter["name"],
             "access": role,
             "permissions": ROLE_PERMISSIONS[role],
             "value": counter["value"],

@@ -23,7 +23,6 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS counters (
     id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
     value INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -87,7 +86,6 @@ async def check_tokens_exist(tokens: list[str], db_path: str | None = None) -> l
 
 async def insert_counter(
     counter_id: str,
-    name: str,
     token_role_map: dict[str, str],
     initial_value: int = 0,
     db_path: str | None = None,
@@ -99,10 +97,10 @@ async def insert_counter(
     async with get_connection(db_path) as conn:
         await conn.execute(
             """
-            INSERT INTO counters (id, name, value, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO counters (id, value, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
             """,
-            (counter_id, name, initial_value, now, now),
+            (counter_id, initial_value, now, now),
         )
 
         for raw_uuid, role in token_role_map.items():
@@ -128,7 +126,6 @@ async def insert_counter(
 
     return {
         "id": counter_id,
-        "name": name,
         "value": initial_value,
         "created_at": now,
         "updated_at": now,
@@ -146,7 +143,7 @@ async def resolve_token(
     async with get_connection(db_path) as conn:
         cursor = await conn.execute(
             """
-            SELECT t.role, c.id, c.name, c.value, c.created_at, c.updated_at
+            SELECT t.role, c.id, c.value, c.created_at, c.updated_at
             FROM counter_tokens t
             JOIN counters c ON t.counter_id = c.id
             WHERE t.token_hash = ?
@@ -159,7 +156,6 @@ async def resolve_token(
 
         counter = {
             "id": row["id"],
-            "name": row["name"],
             "value": row["value"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
@@ -173,7 +169,7 @@ async def get_counter_by_id(
 ) -> dict[str, Any] | None:
     async with get_connection(db_path) as conn:
         cursor = await conn.execute(
-            "SELECT id, name, value, created_at, updated_at FROM counters WHERE id = ?",
+            "SELECT id, value, created_at, updated_at FROM counters WHERE id = ?",
             (counter_id,),
         )
         row = await cursor.fetchone()
