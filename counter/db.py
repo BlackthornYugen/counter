@@ -241,3 +241,14 @@ async def get_counter_events(
         rows = await cursor.fetchall()
         # Return in ascending order for streaming/chronology
         return [dict(row) for row in reversed(rows)]
+
+
+async def delete_counter_by_id(
+    counter_id: str, db_path: str | None = None
+) -> bool:
+    """Deletes a counter by ID. Cascades to tokens and events."""
+    async with get_connection(db_path) as conn:
+        cursor = await conn.execute("DELETE FROM counters WHERE id = ?", (counter_id,))
+        await conn.commit()
+        return cursor.rowcount > 0
+

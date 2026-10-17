@@ -12,8 +12,8 @@ Room access is managed through cryptographically hashed UUID tokens stored in **
 - **Hashed Token Security**: Raw secret UUIDs are **never stored in SQLite**. The server stores normalized **SHA-256 hashes**, authenticating incoming requests via hash resolution.
 - **Role-Based Access Control (RBAC)**:
   - 👁️ **Read-Only (`read_only`)**: Subscribes to live updates and queries state. Mutation attempts receive `403 Forbidden` / `permission_denied`.
-  - ✍️ **Read-Write (`read_write`)**: Can subscribe, inspect, increment, and decrement. Cannot reset.
-  - 👑 **Admin (`admin`)**: Full privileges to inspect, increment, decrement, and reset the counter.
+  - ✍️ **Read-Write (`read_write`)**: Can subscribe, inspect, increment, and decrement. Cannot delete room.
+  - 👑 **Admin (`admin`)**: Can subscribe, inspect, increment, decrement, and delete the counter room (admin's exclusive privilege over read-write).
 - **2 or 3 UUID Registration**:
   - `register(readOnlyUUID, readWriteUUID, adminUUID)`
   - `register(readOnlyUUID, adminUUID)`
@@ -135,12 +135,10 @@ curl -X POST http://localhost:8000/api/counters/{rw_or_admin_token}/decrement \
      -d '{"delta": 1}'
 ```
 
-#### Reset Counter (Admin only)
-`POST /api/counters/{token}/reset`
+#### Delete Counter Room (Admin only)
+`DELETE /api/counters/{token}`
 ```bash
-curl -X POST http://localhost:8000/api/counters/{admin_token}/reset \
-     -H "Content-Type: application/json" \
-     -d '{"value": 0}'
+curl -X DELETE http://localhost:8000/api/counters/{admin_token}
 ```
 
 ---
@@ -175,7 +173,7 @@ Clients send JSON payloads:
 
 - **Increment**: `{"action": "increment", "delta": 1}`
 - **Decrement**: `{"action": "decrement", "delta": 1}`
-- **Reset**: `{"action": "reset", "value": 0}` (Admin only)
+- **Delete Room**: `{"action": "delete"}` (Admin only)
 - **Ping**: `{"action": "ping"}`
 
 #### 3. Real-Time Broadcasts
@@ -220,10 +218,17 @@ data: {"type": "connected", "access": "read_only", "permissions": {"can_read": t
 ```
 
 #### Event: `update`
-Emitted whenever an increment, decrement, or reset occurs:
+Emitted whenever an increment or decrement occurs:
 ```
 event: update
 data: {"type": "update", "action": "increment", "delta": 1, "value": 14, "role": "admin", "timestamp": "2026-10-17T21:55:05Z"}
+```
+
+#### Event: `deleted`
+Emitted if the counter room is deleted by an admin:
+```
+event: deleted
+data: {"type": "deleted", "counter_id": "f8577a76-...", "message": "Counter room deleted by admin"}
 ```
 
 ---

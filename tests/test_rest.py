@@ -138,23 +138,32 @@ async def test_rest_counter_lifecycle_and_permissions():
         assert dec_rw.status_code == 200
         assert dec_rw.json()["value"] == 3
 
-        # 6. Read-write cannot reset
-        reset_rw = await client.post(f"/api/counters/{rw}/reset", json={"value": 0})
-        assert reset_rw.status_code == 403
+        # 6. Reset endpoint has been removed (404/405)
+        reset_res = await client.post(f"/api/counters/{admin}/reset", json={"delta": 1})
+        assert reset_res.status_code in (404, 405)
 
-        # 7. Admin can reset
-        reset_admin = await client.post(f"/api/counters/{admin}/reset", json={"value": 100})
-        assert reset_admin.status_code == 200
-        assert reset_admin.json()["value"] == 100
-        assert reset_admin.json()["access"] == "admin"
-
-        # 8. Check events history
+        # 7. Check events history before deletion
         events_res = await client.get(f"/api/counters/{ro}/events")
         assert events_res.status_code == 200
         events = events_res.json()["events"]
-        # Expected events: create, increment, decrement, reset
         actions = [e["action"] for e in events]
         assert "create" in actions
         assert "increment" in actions
         assert "decrement" in actions
-        assert "reset" in actions
+
+        # 8. Read-only cannot delete counter
+        del_ro = await client.delete(f"/api/counters/{ro}")
+        assert del_ro.status_code == 403
+
+        # 9. Read-write cannot delete counter
+        del_rw = await client.delete(f"/api/counters/{rw}")
+        assert del_rw.status_code == 403
+
+        # 10. Admin can delete counter
+        del_admin = await client.delete(f"/api/counters/{admin}")
+        assert del_admin.status_code == 200
+        assert del_admin.json()["deleted"] is True
+
+        # 11. Subsequent access returns 401
+        after_get = await client.get(f"/api/counters/{admin}")
+        assert after_get.status_code == 401

@@ -6,16 +6,19 @@ ROLE_PERMISSIONS = {
     "read_only": {
         "can_read": True,
         "can_write": False,
+        "can_delete": False,
         "can_admin": False,
     },
     "read_write": {
         "can_read": True,
         "can_write": True,
+        "can_delete": False,
         "can_admin": False,
     },
     "admin": {
         "can_read": True,
         "can_write": True,
+        "can_delete": True,
         "can_admin": True,
     },
 }
@@ -85,7 +88,12 @@ class CounterInfoResponse(BaseModel):
 
 class ActionRequest(BaseModel):
     delta: int = Field(default=1, description="Amount to increment or decrement")
-    value: int = Field(default=0, description="Target value for reset action")
+
+
+class DeleteResponse(BaseModel):
+    counter_id: str
+    deleted: bool
+    message: str
 
 
 class ActionResponse(BaseModel):

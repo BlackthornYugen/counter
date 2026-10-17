@@ -11,6 +11,7 @@ from counter.models import (
     CounterInfoResponse,
     ActionRequest,
     ActionResponse,
+    DeleteResponse,
     EventListResponse,
     ROLE_PERMISSIONS,
 )
@@ -18,6 +19,7 @@ from counter.service import (
     register_async,
     get_counter_info_by_token,
     mutate_counter,
+    delete_counter,
     get_recent_events_by_token,
     InvalidTokenError,
     PermissionDeniedError,
@@ -89,12 +91,12 @@ async def api_decrement_counter(token: str, req: ActionRequest = Body(default_fa
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
 
 
-@router.post("/api/counters/{token}/reset", response_model=ActionResponse)
-async def api_reset_counter(token: str, req: ActionRequest = Body(default_factory=ActionRequest)) -> ActionResponse:
-    """Resets the counter. Admin role only."""
+@router.delete("/api/counters/{token}", response_model=DeleteResponse)
+async def api_delete_counter(token: str) -> DeleteResponse:
+    """Deletes the counter room. Admin role only."""
     try:
-        res = await mutate_counter(token=token, action="reset", target_value=req.value)
-        return ActionResponse(**res)
+        res = await delete_counter(token=token)
+        return DeleteResponse(**res)
     except InvalidTokenError as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
     except PermissionDeniedError as e:
@@ -147,6 +149,9 @@ async def sse_event_generator(token: str) -> AsyncGenerator[str, None]:
             try:
                 # Wait for next event with a 15-second timeout for keepalive
                 event_data = await asyncio.wait_for(queue.get(), timeout=15.0)
+                if event_data.get("type") == "deleted":
+                    yield f"event: deleted\ndata: {json.dumps(event_data)}\n\n"
+                    break
                 yield f"event: update\ndata: {json.dumps(event_data)}\n\n"
             except asyncio.TimeoutError:
                 # Send SSE keep-alive comment
@@ -264,15 +269,31 @@ async def _handle_websocket(websocket: WebSocket, effective_token: str | None) -
                 await websocket.send_text(json.dumps({"type": "status", **info}))
                 continue
 
+            if action == "delete":
+                try:
+                    res = await delete_counter(token=effective_token)
+                    await websocket.send_text(json.dumps({
+                        "type": "deleted",
+                        "counter_id": res["counter_id"],
+                        "message": res["message"],
+                    }))
+                    return
+                except PermissionDeniedError as e:
+                    await websocket.send_text(json.dumps({
+                        "type": "error",
+                        "code": "permission_denied",
+                        "access": role,
+                        "message": str(e),
+                    }))
+                    continue
+
             delta = msg.get("delta", 1)
-            target_value = msg.get("value", 0)
 
             try:
                 result = await mutate_counter(
                     token=effective_token,
                     action=action,
                     delta=delta,
-                    target_value=target_value,
                 )
                 # Confirm back to this socket as well (it also receives the broadcast)
                 await websocket.send_text(json.dumps({

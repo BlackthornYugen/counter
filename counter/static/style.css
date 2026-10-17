@@ -825,16 +825,16 @@ body {
   box-shadow: 0 0 16px rgba(244, 63, 94, 0.3);
 }
 
-.btn-reset {
-  background: rgba(245, 158, 11, 0.1);
-  border-color: rgba(245, 158, 11, 0.25);
-  color: #fbbf24;
+.btn-delete {
+  background: rgba(244, 63, 94, 0.12);
+  border-color: rgba(244, 63, 94, 0.3);
+  color: #fda4af;
   font-size: 13px;
   letter-spacing: 0.5px;
 }
-.btn-reset:hover:not(:disabled) {
-  background: rgba(245, 158, 11, 0.25);
-  box-shadow: 0 0 16px rgba(245, 158, 11, 0.3);
+.btn-delete:hover:not(:disabled) {
+  background: rgba(244, 63, 94, 0.28);
+  box-shadow: 0 0 16px rgba(244, 63, 94, 0.45);
 }
 
 /* Event Stream Feed */
@@ -874,8 +874,8 @@ body {
   border-left-color: var(--accent-rose);
 }
 
-.event-row.action-reset {
-  border-left-color: var(--accent-amber);
+.event-row.action-delete {
+  border-left-color: var(--accent-rose);
 }
 
 .event-left {

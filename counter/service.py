@@ -10,6 +10,7 @@ from counter.db import (
     update_counter_value,
     get_counter_by_id,
     get_counter_events,
+    delete_counter_by_id,
 )
 from counter.models import ROLE_PERMISSIONS
 from counter.hub import hub
@@ -224,10 +225,9 @@ async def mutate_counter(
     token: str,
     action: str,
     delta: int | None = None,
-    target_value: int | None = None,
     db_path: str | None = None,
 ) -> dict[str, Any]:
-    """Validates token and role permissions, performs increment/decrement/reset,
+    """Validates token and role permissions, performs increment/decrement,
     updates database, and broadcasts event to WebSockets and SSE clients.
     """
     result = await resolve_token(token, db_path=db_path)
@@ -245,13 +245,6 @@ async def mutate_counter(
         step = delta if delta is not None else 1
         new_val = counter["value"] + step if action == "increment" else counter["value"] - step
         actual_delta = step if action == "increment" else -step
-    elif action == "reset":
-        if not permissions["can_admin"]:
-            raise PermissionDeniedError(
-                f"Role '{role}' cannot perform 'reset'. Only 'admin' role can reset counter."
-            )
-        new_val = target_value if target_value is not None else 0
-        actual_delta = new_val - counter["value"]
     else:
         raise ValueError(f"Unknown counter action: '{action}'")
 
@@ -302,3 +295,40 @@ async def get_recent_events_by_token(
         "access": role,
         "events": events,
     }
+
+
+async def delete_counter(token: str, db_path: str | None = None) -> dict[str, Any]:
+    """Validates token and admin role permissions, deletes the counter from the database,
+    broadcasts deletion event to subscribers, and closes room connections.
+    """
+    result = await resolve_token(token, db_path=db_path)
+    if not result:
+        raise InvalidTokenError("Provided token/UUID is invalid or does not exist.")
+
+    counter, role = result
+    permissions = ROLE_PERMISSIONS[role]
+    if not permissions["can_delete"]:
+        raise PermissionDeniedError(
+            f"Role '{role}' cannot delete counter. Only 'admin' role can delete counter."
+        )
+
+    counter_id = counter["id"]
+    deleted = await delete_counter_by_id(counter_id, db_path=db_path)
+
+    # Broadcast deletion event and close all connections in hub
+    await hub.broadcast(
+        counter_id,
+        {
+            "type": "deleted",
+            "counter_id": counter_id,
+            "message": "Counter room has been permanently deleted by admin.",
+        },
+    )
+    await hub.close_room(counter_id, reason="Counter room deleted by admin")
+
+    return {
+        "counter_id": counter_id,
+        "deleted": deleted,
+        "message": "Counter room successfully deleted.",
+    }
+

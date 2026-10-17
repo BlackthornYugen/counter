@@ -128,24 +128,24 @@ function applyRolePermissions(role) {
   const btnInc10 = document.getElementById("btn-inc-10");
   const btnDec1 = document.getElementById("btn-dec-1");
   const btnDec10 = document.getElementById("btn-dec-10");
-  const btnReset = document.getElementById("btn-reset");
+  const btnDelete = document.getElementById("btn-delete");
 
   if (role === "none" || !role) {
     roleDisplay.textContent = "None (Disconnected)";
     permWrite.className = "perm-badge";
     permWrite.textContent = "✕ Inc / Dec Blocked";
     permAdmin.className = "perm-badge";
-    permAdmin.textContent = "✕ Reset Blocked";
+    permAdmin.textContent = "✕ Delete Blocked";
     btnInc1.disabled = true;
     btnInc10.disabled = true;
     btnDec1.disabled = true;
     btnDec10.disabled = true;
-    btnReset.disabled = true;
+    btnDelete.disabled = true;
     return;
   }
 
   const canWrite = (role === "admin" || role === "read_write");
-  const canAdmin = (role === "admin");
+  const canDelete = (role === "admin");
 
   roleDisplay.textContent = role === "admin" ? "Admin (Full Access)" : (role === "read_write" ? "Read-Write" : "Read-Only");
 
@@ -165,14 +165,14 @@ function applyRolePermissions(role) {
     btnDec10.disabled = true;
   }
 
-  if (canAdmin) {
+  if (canDelete) {
     permAdmin.className = "perm-badge allowed";
-    permAdmin.textContent = "✓ Reset / Admin";
-    btnReset.disabled = false;
+    permAdmin.textContent = "✓ Delete Room";
+    btnDelete.disabled = false;
   } else {
     permAdmin.className = "perm-badge";
-    permAdmin.textContent = "✕ Reset Blocked";
-    btnReset.disabled = true;
+    permAdmin.textContent = "✕ Delete Blocked";
+    btnDelete.disabled = true;
   }
 }
 
@@ -334,6 +334,17 @@ function handleIncomingMessage(data) {
   } else if (data.type === "update") {
     updateCounterDisplay(data.value, data.delta);
     addEventToStream(data);
+  } else if (data.type === "deleted") {
+    showToast(`Counter room was deleted: ${data.message || ''}`, "error");
+    disconnectRoom();
+    applyRolePermissions("none");
+    document.getElementById("counter-room-name").textContent = "Room Deleted";
+    updateCounterDisplay(0);
+    const activeBar = document.getElementById("active-link-bar");
+    if (activeBar) activeBar.style.display = "none";
+    if (window.location.hash) {
+      history.replaceState(null, "", window.location.pathname);
+    }
   } else if (data.type === "action_ack") {
     // Acknowledged
   } else if (data.type === "error") {
@@ -343,7 +354,7 @@ function handleIncomingMessage(data) {
 
 // --- Action Triggers (WS send or REST POST) ---
 
-async function sendCounterAction(action, delta = 1, targetValue = 0) {
+async function sendCounterAction(action, delta = 1) {
   const token = activeTokens[currentRole];
   if (!token) {
     showToast("No active token. Please register or select a counter.", "error");
@@ -355,19 +366,17 @@ async function sendCounterAction(action, delta = 1, targetValue = 0) {
     roomSocket.send(JSON.stringify({
       action: action,
       delta: delta,
-      value: targetValue
     }));
     return;
   }
 
   // Otherwise fallback/use REST endpoint
   try {
-    let url = `/api/counters/${token}/${action}`;
-    let body = action === "reset" ? { value: targetValue } : { delta: delta };
+    const url = `/api/counters/${token}/${action}`;
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
+      body: JSON.stringify({ delta: delta }),
     });
 
     const data = await res.json();
@@ -376,6 +385,49 @@ async function sendCounterAction(action, delta = 1, targetValue = 0) {
     }
   } catch (err) {
     showToast(`Network error: ${err.message}`, "error");
+  }
+}
+
+async function deleteCounterRoom() {
+  const token = activeTokens[currentRole] || document.getElementById("input-connect-uuid").value.trim();
+  if (!token) {
+    showToast("No active room to delete.", "error");
+    return;
+  }
+  if (currentRole !== "admin") {
+    showToast("Only 'admin' role can delete the counter room.", "error");
+    return;
+  }
+
+  const confirmed = window.confirm("Are you sure you want to permanently delete this counter room? This cannot be undone.");
+  if (!confirmed) return;
+
+  try {
+    const res = await fetch(`/api/counters/${token}`, {
+      method: "DELETE",
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      showToast(data.detail || "Failed to delete room.", "error");
+      return;
+    }
+
+    showToast("Counter room deleted successfully.", "success");
+    disconnectRoom();
+    applyRolePermissions("none");
+    document.getElementById("counter-room-name").textContent = "Room Deleted";
+    updateCounterDisplay(0);
+    const activeBar = document.getElementById("active-link-bar");
+    if (activeBar) activeBar.style.display = "none";
+    const regResult = document.getElementById("reg-result");
+    if (regResult) regResult.style.display = "none";
+    activeTokens = {};
+    activeCounterId = null;
+    if (window.location.hash) {
+      history.replaceState(null, "", window.location.pathname);
+    }
+  } catch (err) {
+    showToast(`Error deleting room: ${err.message}`, "error");
   }
 }
 
@@ -652,7 +704,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-inc-10").addEventListener("click", () => sendCounterAction("increment", 10));
   document.getElementById("btn-dec-1").addEventListener("click", () => sendCounterAction("decrement", 1));
   document.getElementById("btn-dec-10").addEventListener("click", () => sendCounterAction("decrement", 10));
-  document.getElementById("btn-reset").addEventListener("click", () => sendCounterAction("reset", 0, 0));
+  document.getElementById("btn-delete").addEventListener("click", () => deleteCounterRoom());
 
   // Simulator Buttons
   document.getElementById("sim-btn-inc").addEventListener("click", () => {

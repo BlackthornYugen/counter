@@ -5,6 +5,7 @@ from counter.service import (
     register_async,
     get_counter_info_by_token,
     mutate_counter,
+    delete_counter,
     InvalidTokenError,
     PermissionDeniedError,
     DuplicateTokenError,
@@ -81,7 +82,8 @@ async def test_mutate_permissions(tmp_path):
     rw = str(uuid.uuid4())
     admin = str(uuid.uuid4())
 
-    await register_async(ro, rw, admin, initial_value=5, db_path=db_file)
+    reg = await register_async(ro, rw, admin, initial_value=5, db_path=db_file)
+    counter_id = reg["counter_id"]
 
     # 1. Read-only tries to increment -> PermissionDeniedError
     with pytest.raises(PermissionDeniedError):
@@ -100,14 +102,33 @@ async def test_mutate_permissions(tmp_path):
     res2 = await mutate_counter(rw, action="decrement", delta=3, db_path=db_file)
     assert res2["value"] == 4
 
-    # 5. Read-write cannot reset
-    with pytest.raises(PermissionDeniedError):
-        await mutate_counter(rw, action="reset", target_value=0, db_path=db_file)
-
-    # 6. Admin can reset
-    res3 = await mutate_counter(admin, action="reset", target_value=100, db_path=db_file)
-    assert res3["value"] == 100
+    # 5. Admin and read-write have same write privileges (inc/dec)
+    res3 = await mutate_counter(admin, action="increment", delta=5, db_path=db_file)
+    assert res3["value"] == 9
     assert res3["access"] == "admin"
+
+    # 6. Reset action does not exist (decrements should be used instead)
+    with pytest.raises(ValueError, match="Unknown counter action: 'reset'"):
+        await mutate_counter(admin, action="reset", delta=1, db_path=db_file)
+
+    # 7. Read-only cannot delete counter
+    with pytest.raises(PermissionDeniedError, match="cannot delete"):
+        await delete_counter(ro, db_path=db_file)
+
+    # 8. Read-write cannot delete counter
+    with pytest.raises(PermissionDeniedError, match="cannot delete"):
+        await delete_counter(rw, db_path=db_file)
+
+    # 9. Admin can delete counter
+    del_res = await delete_counter(admin, db_path=db_file)
+    assert del_res["deleted"] is True
+    assert del_res["counter_id"] == counter_id
+
+    # 10. After deletion, token resolution fails
+    from counter.db import resolve_token
+    assert await resolve_token(admin, db_path=db_file) is None
+    assert await resolve_token(rw, db_path=db_file) is None
+    assert await resolve_token(ro, db_path=db_file) is None
 
 
 @pytest.mark.asyncio

@@ -83,5 +83,24 @@ class CounterHub:
             except asyncio.QueueFull:
                 logger.warning("SSE queue full for counter %s; dropping event", counter_id)
 
+    async def close_room(self, counter_id: str, reason: str = "Counter room deleted") -> None:
+        """Closes all active WebSockets and notifies SSE subscribers on room deletion."""
+        async with self._lock:
+            ws_targets = list(self._ws_subscribers.pop(counter_id, set()))
+            sse_targets = list(self._sse_subscribers.pop(counter_id, set()))
+
+        for ws in ws_targets:
+            try:
+                await ws.close(code=1000, reason=reason)
+            except Exception as e:
+                logger.debug("Error closing WS on room close: %s", e)
+
+        for queue in sse_targets:
+            try:
+                queue.put_nowait({"type": "deleted", "counter_id": counter_id, "message": reason})
+            except Exception:
+                pass
+
 
 hub = CounterHub()
+
