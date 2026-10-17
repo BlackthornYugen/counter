@@ -22,6 +22,7 @@ from counter.service import (
     InvalidTokenError,
     PermissionDeniedError,
     DuplicateTokenError,
+    TokenAlreadyRegisteredError,
 )
 from counter.db import resolve_token, get_counter_events
 from counter.hub import hub
@@ -48,6 +49,8 @@ async def api_register_counter(payload: RegisterRequest) -> RegisterResponse:
         return RegisterResponse(**result)
     except DuplicateTokenError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except TokenAlreadyRegisteredError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 

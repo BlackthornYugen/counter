@@ -17,6 +17,7 @@ Room access is managed through cryptographically hashed UUID tokens stored in **
 - **2 or 3 UUID Registration**:
   - `register(readOnlyUUID, readWriteUUID, adminUUID)`
   - `register(readOnlyUUID, adminUUID)`
+- **Strict UUIDv4 Format Enforcement**: Custom vanity URLs (such as `a/b/c`) are strictly rejected. All registered access keys must be valid UUID version 4 tokens.
 - **Cross-Protocol Broadcasting**: Updates triggered by WebSocket actions or REST calls are simultaneously broadcast to all active WebSockets and SSE clients.
 - **Interactive Web Client**: Glassmorphism dashboard with glowing counters, live event feed, role switcher, and a side-by-side simulator.
 

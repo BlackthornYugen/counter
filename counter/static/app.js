@@ -130,6 +130,20 @@ function applyRolePermissions(role) {
   const btnDec10 = document.getElementById("btn-dec-10");
   const btnReset = document.getElementById("btn-reset");
 
+  if (role === "none" || !role) {
+    roleDisplay.textContent = "None (Disconnected)";
+    permWrite.className = "perm-badge";
+    permWrite.textContent = "✕ Inc / Dec Blocked";
+    permAdmin.className = "perm-badge";
+    permAdmin.textContent = "✕ Reset Blocked";
+    btnInc1.disabled = true;
+    btnInc10.disabled = true;
+    btnDec1.disabled = true;
+    btnDec10.disabled = true;
+    btnReset.disabled = true;
+    return;
+  }
+
   const canWrite = (role === "admin" || role === "read_write");
   const canAdmin = (role === "admin");
 
@@ -174,24 +188,84 @@ function disconnectRoom() {
     roomEventSource = null;
   }
   updateStatusPill("disconnected", "Disconnected");
+  const activeBar = document.getElementById("active-link-bar");
+  if (activeBar) activeBar.style.display = "none";
 }
 
-function connectRoom() {
-  disconnectRoom();
-  const token = activeTokens[currentRole];
+async function connectWithToken(token, updateHash = true) {
   if (!token) {
-    showToast(`No token available for role '${currentRole}'. Please register a counter first.`, "error");
+    showToast("Please enter a room access UUID.", "error");
+    return;
+  }
+  const cleaned = token.trim().replace(/^[\/#]+/, "").trim();
+  const UUIDV4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!UUIDV4_REGEX.test(cleaned)) {
+    showToast("Provided token must be formatted as a valid UUIDv4.", "error");
     return;
   }
 
-  updateStatusPill("connecting", "Connecting...");
-  applyRolePermissions(currentRole);
+  updateStatusPill("connecting", "Verifying UUID...");
 
-  if (currentProtocol === "ws") {
-    connectRoomWebSocket(token);
-  } else {
-    connectRoomSSE(token);
+  try {
+    const res = await fetch(`/api/counters/${cleaned}`);
+    const data = await res.json();
+    if (!res.ok) {
+      updateStatusPill("disconnected", "Invalid UUID");
+      showToast(data.detail || "Invalid access UUID or room does not exist.", "error");
+      return;
+    }
+
+    activeCounterId = data.counter_id;
+    currentRole = data.access;
+    activeTokens[currentRole] = cleaned;
+
+    document.getElementById("input-connect-uuid").value = cleaned;
+    document.getElementById("counter-room-name").textContent = data.name || "Counter Room";
+    updateCounterDisplay(data.value);
+    applyRolePermissions(currentRole);
+
+    // Update active role chip
+    document.querySelectorAll(".chip-role").forEach(c => c.classList.remove("active"));
+    const activeChip = document.querySelector(`.chip-role[data-role="${currentRole}"]`);
+    if (activeChip) activeChip.classList.add("active");
+
+    // Display active room hashtag link
+    const activeBar = document.getElementById("active-link-bar");
+    const activeAnchor = document.getElementById("active-hashtag-anchor");
+    if (activeBar && activeAnchor) {
+      activeBar.style.display = "flex";
+      activeAnchor.href = `#${cleaned}`;
+      activeAnchor.textContent = `#${cleaned}`;
+    }
+
+    // Update URL hashtag
+    if (updateHash && window.location.hash !== `#${cleaned}`) {
+      window.location.hash = `#${cleaned}`;
+    }
+
+    // Save to localStorage
+    try { localStorage.setItem("counter_last_token", cleaned); } catch(e) {}
+
+    disconnectRoom();
+    if (currentProtocol === "ws") {
+      connectRoomWebSocket(cleaned);
+    } else {
+      connectRoomSSE(cleaned);
+    }
+
+  } catch (err) {
+    updateStatusPill("disconnected", "Network Error");
+    showToast(`Network error: ${err.message}`, "error");
   }
+}
+
+function connectRoom() {
+  const token = activeTokens[currentRole] || document.getElementById("input-connect-uuid").value.trim();
+  if (!token) {
+    showToast("Please enter an access UUID or register a counter first.", "error");
+    return;
+  }
+  connectWithToken(token, true);
 }
 
 function connectRoomWebSocket(token) {
@@ -342,10 +416,20 @@ function initSimulator() {
 // --- Event Listeners and Initialization ---
 
 document.addEventListener("DOMContentLoaded", () => {
-  // Populate default UUIDs
-  document.getElementById("reg-ro-uuid").value = generateUUID();
-  document.getElementById("reg-rw-uuid").value = generateUUID();
-  document.getElementById("reg-admin-uuid").value = generateUUID();
+  // Inputs start empty on load; users can click the generator buttons when needed
+
+  // "Generate All" button
+  const btnGenAll = document.getElementById("btn-gen-all");
+  if (btnGenAll) {
+    btnGenAll.addEventListener("click", () => {
+      document.getElementById("reg-ro-uuid").value = generateUUID();
+      if (currentMode === "3uuid") {
+        document.getElementById("reg-rw-uuid").value = generateUUID();
+      }
+      document.getElementById("reg-admin-uuid").value = generateUUID();
+      showToast("Generated new UUIDv4 tokens for all fields.", "info");
+    });
+  }
 
   // Mode toggles (3 UUIDs vs 2 UUIDs)
   document.getElementById("btn-mode-3uuid").addEventListener("click", () => {
@@ -367,7 +451,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // UUID generator buttons
+  // Individual UUID generator buttons
   document.getElementById("gen-ro-uuid").addEventListener("click", () => {
     document.getElementById("reg-ro-uuid").value = generateUUID();
   });
@@ -378,6 +462,8 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("reg-admin-uuid").value = generateUUID();
   });
 
+  const UUIDV4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
   // Register Form Submit
   document.getElementById("btn-register").addEventListener("click", async () => {
     const name = document.getElementById("reg-name").value.trim() || "Counter Room";
@@ -386,7 +472,20 @@ document.addEventListener("DOMContentLoaded", () => {
     const rw = currentMode === "3uuid" ? document.getElementById("reg-rw-uuid").value.trim() : null;
 
     if (!ro || !admin || (currentMode === "3uuid" && !rw)) {
-      showToast("Please fill in all UUID fields.", "error");
+      showToast("Please fill in all UUID fields (or click 🎲 to generate).", "error");
+      return;
+    }
+
+    if (!UUIDV4_REGEX.test(ro)) {
+      showToast("Read-Only UUID must be formatted as a valid UUIDv4.", "error");
+      return;
+    }
+    if (rw && !UUIDV4_REGEX.test(rw)) {
+      showToast("Read-Write UUID must be formatted as a valid UUIDv4.", "error");
+      return;
+    }
+    if (!UUIDV4_REGEX.test(admin)) {
+      showToast("Admin UUID must be formatted as a valid UUIDv4.", "error");
       return;
     }
 
@@ -406,7 +505,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const data = await res.json();
       if (!res.ok) {
-        showToast(data.detail || "Registration failed.", "error");
+        if (res.status === 409) {
+          showToast(data.detail || "UUID already registered. Connect to the room using this UUID.", "error");
+          document.getElementById("input-connect-uuid").value = admin;
+        } else {
+          showToast(data.detail || "Registration failed.", "error");
+        }
         return;
       }
 
@@ -417,15 +521,59 @@ document.addEventListener("DOMContentLoaded", () => {
       // Populate registration summary box
       document.getElementById("reg-result").style.display = "block";
       document.getElementById("res-counter-id").textContent = `ID: ${data.counter_id}`;
+      
+      // Populate role link cards linking to #<uuid>
+      const roleCardsContainer = document.getElementById("reg-role-cards");
+      if (roleCardsContainer) {
+        roleCardsContainer.innerHTML = "";
+        const roleList = currentMode === "3uuid" ? ["admin", "read_write", "read_only"] : ["admin", "read_only"];
+        for (const role of roleList) {
+          const token = data.roles[role];
+          if (!token) continue;
+          const icon = role === "admin" ? "👑" : (role === "read_write" ? "✍️" : "👁️");
+          const title = role === "admin" ? "Admin" : (role === "read_write" ? "Read-Write" : "Read-Only");
+          const desc = role === "admin" ? "Full Control" : (role === "read_write" ? "Write & Read" : "View Only");
+          const shareUrl = `${window.location.origin}${window.location.pathname}#${token}`;
+
+          const card = document.createElement("a");
+          card.href = `#${token}`;
+          card.className = `role-link-card card-role-${role}`;
+          card.setAttribute("title", `Connect as ${title} using #${token}`);
+          card.innerHTML = `
+            <div class="role-card-top">
+              <span class="role-card-badge">${icon} ${title}</span>
+              <span class="label-role-tag tag-${role === 'admin' ? 'admin' : (role === 'read_write' ? 'rw' : 'ro')}">${desc}</span>
+            </div>
+            <div class="role-card-token">
+              #${token}
+            </div>
+            <div class="role-card-actions">
+              <span class="role-btn-action">⚡ Connect #${title}</span>
+              <button type="button" class="role-btn-action btn-copy-card-link" data-link="${shareUrl}" title="Copy shareable link with hashtag">🔗 Copy Link</button>
+            </div>
+          `;
+          roleCardsContainer.appendChild(card);
+        }
+
+        roleCardsContainer.querySelectorAll(".btn-copy-card-link").forEach(btn => {
+          btn.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            navigator.clipboard.writeText(btn.getAttribute("data-link"));
+            showToast("Shareable link with hashtag copied to clipboard!", "info");
+          });
+        });
+      }
+
+      // Populate hash table
       const tbody = document.getElementById("token-table-body");
       tbody.innerHTML = "";
-
       for (const [role, token] of Object.entries(data.roles)) {
         const hash = data.token_hashes[role];
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td><span class="label-role-tag tag-${role === 'admin' ? 'admin' : (role === 'read_write' ? 'rw' : 'ro')}">${role}</span></td>
-          <td class="code-cell" title="${token}">${token}</td>
+          <td class="code-cell" title="${token}"><a href="#${token}" style="color:var(--text-main); text-decoration:none;">#${token}</a></td>
           <td class="code-cell" title="${hash}">${hash.substring(0, 16)}...</td>
           <td>
             <button type="button" class="btn-secondary copy-btn" data-copy="${token}" style="padding:2px 8px; font-size:11px;">Copy</button>
@@ -434,7 +582,6 @@ document.addEventListener("DOMContentLoaded", () => {
         tbody.appendChild(tr);
       }
 
-      // Add copy listeners
       tbody.querySelectorAll(".copy-btn").forEach(btn => {
         btn.addEventListener("click", () => {
           navigator.clipboard.writeText(btn.getAttribute("data-copy"));
@@ -442,12 +589,29 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       });
 
-      // Connect live room automatically
-      connectRoom();
+      // Show role switcher chips since we have all keys in this session
+      document.getElementById("role-switcher-container").style.display = "block";
+
+      // Connect to live room using the admin token and update hashtag
+      document.getElementById("input-connect-uuid").value = data.roles.admin;
+      connectWithToken(data.roles.admin, true);
       initSimulator();
 
     } catch (e) {
       showToast(`Error: ${e.message}`, "error");
+    }
+  });
+
+  // Connect With Existing UUID Button
+  document.getElementById("btn-connect-uuid").addEventListener("click", () => {
+    const val = document.getElementById("input-connect-uuid").value.trim();
+    connectWithToken(val, true);
+  });
+
+  document.getElementById("input-connect-uuid").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      const val = document.getElementById("input-connect-uuid").value.trim();
+      connectWithToken(val, true);
     }
   });
 
@@ -472,7 +636,11 @@ document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll(".chip-role").forEach(c => c.classList.remove("active"));
     const activeChip = document.querySelector(`.chip-role[data-role="${role}"]`);
     if (activeChip) activeChip.classList.add("active");
-    connectRoom();
+    const token = activeTokens[role];
+    if (token) {
+      window.location.hash = `#${token}`;
+      connectWithToken(token, false);
+    }
   }
 
   document.getElementById("chip-admin").addEventListener("click", () => switchRole("admin"));
@@ -504,6 +672,57 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast("Event stream feed cleared", "info");
   });
 
-  // Trigger initial registration automatically on first load so user gets a fully active room right away
-  document.getElementById("btn-register").click();
+  // Hashtag extraction helper
+  function getHashToken() {
+    if (window.location.hash && window.location.hash.length > 1) {
+      const raw = decodeURIComponent(window.location.hash.substring(1)).trim();
+      return raw.replace(/^[\/#]+/, "").trim();
+    }
+    return null;
+  }
+
+  // Active link bar copy button
+  const btnCopyActive = document.getElementById("btn-copy-active-link");
+  if (btnCopyActive) {
+    btnCopyActive.addEventListener("click", () => {
+      const anchor = document.getElementById("active-hashtag-anchor");
+      if (anchor && anchor.getAttribute("href") && anchor.getAttribute("href") !== "#") {
+        const fullUrl = `${window.location.origin}${window.location.pathname}${anchor.getAttribute("href")}`;
+        navigator.clipboard.writeText(fullUrl);
+        showToast("Room share link with hashtag copied to clipboard!", "info");
+      }
+    });
+  }
+
+  // Listen to browser hash changes (e.g. user clicks back/forward or a role card #link)
+  window.addEventListener("hashchange", () => {
+    const hashToken = getHashToken();
+    if (hashToken) {
+      const activeToken = activeTokens[currentRole];
+      if (hashToken !== activeToken) {
+        document.getElementById("input-connect-uuid").value = hashToken;
+        connectWithToken(hashToken, false);
+      }
+    }
+  });
+
+  // Initial State: inputs start blank, controls start disabled
+  applyRolePermissions("none");
+  document.getElementById("counter-room-name").textContent = "No Room Connected";
+  updateStatusPill("disconnected", "Not Connected");
+
+  // Check if URL has hashtag #<uuid> on initial load
+  const initialHash = getHashToken();
+  if (initialHash) {
+    document.getElementById("input-connect-uuid").value = initialHash;
+    connectWithToken(initialHash, false);
+  } else {
+    // Check URL query parameters for ?token=<uuid> or ?uuid=<uuid>
+    const urlParams = new URLSearchParams(window.location.search);
+    const tokenParam = urlParams.get("token") || urlParams.get("uuid");
+    if (tokenParam) {
+      document.getElementById("input-connect-uuid").value = tokenParam;
+      connectWithToken(tokenParam, true);
+    }
+  }
 });

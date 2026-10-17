@@ -1,5 +1,5 @@
 from typing import Any
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, field_validator
 
 
 ROLE_PERMISSIONS = {
@@ -45,6 +45,23 @@ class RegisterRequest(BaseModel):
             if "adminUUID" not in data and "admin_uuid" in data:
                 data["adminUUID"] = data["admin_uuid"]
         return data
+
+    @field_validator("readOnlyUUID", "readWriteUUID", "adminUUID")
+    @classmethod
+    def validate_uuid_v4(cls, v: str | None, info: Any) -> str | None:
+        if v is None:
+            return None
+        cleaned = str(v).strip()
+        if not cleaned:
+            return None
+        import uuid
+        try:
+            parsed = uuid.UUID(cleaned)
+        except (ValueError, TypeError, AttributeError):
+            raise ValueError(f"'{info.field_name}' must be formatted as a valid UUIDv4")
+        if parsed.version != 4:
+            raise ValueError(f"'{info.field_name}' must be a UUID version 4, got version {parsed.version or 'unknown'}")
+        return str(parsed)
 
 
 class RegisterResponse(BaseModel):

@@ -4,6 +4,7 @@ from typing import Any
 from counter.db import (
     hash_token,
     init_db,
+    check_tokens_exist,
     insert_counter,
     resolve_token,
     update_counter_value,
@@ -30,21 +31,37 @@ class PermissionDeniedError(CounterServiceError):
 
 
 class DuplicateTokenError(CounterServiceError):
-    """Raised when registering identical UUIDs for multiple roles."""
+    """Raised when registering identical UUIDs for multiple roles within the same request."""
+    pass
+
+
+class TokenAlreadyRegisteredError(CounterServiceError):
+    """Raised when one or more UUIDs are already registered to an existing counter room."""
+    pass
+
+
+class InvalidUUIDError(CounterServiceError, ValueError):
+    """Raised when a provided token is not formatted as a valid UUIDv4."""
     pass
 
 
 def _validate_uuid_str(val: str, field_name: str) -> str:
     cleaned = str(val).strip()
     if not cleaned:
-        raise ValueError(f"'{field_name}' cannot be empty")
-    # Verify standard UUID format if possible, otherwise accept valid token string
+        raise InvalidUUIDError(f"'{field_name}' cannot be empty")
     try:
         parsed = uuid.UUID(cleaned)
-        return str(parsed)
-    except ValueError:
-        # Allow custom string token as well
-        return cleaned
+    except (ValueError, TypeError, AttributeError):
+        raise InvalidUUIDError(
+            f"'{field_name}' must be formatted as a valid UUIDv4 (e.g. '{uuid.uuid4()}')"
+        )
+
+    if parsed.version != 4:
+        raise InvalidUUIDError(
+            f"'{field_name}' must be a UUID version 4 (e.g. '{uuid.uuid4()}'), got version {parsed.version or 'unknown'}"
+        )
+
+    return str(parsed)
 
 
 async def register_async(
@@ -101,6 +118,14 @@ async def register_async(
     normalized_tokens = [t.lower() for t in tokens_to_check]
     if len(normalized_tokens) != len(set(normalized_tokens)):
         raise DuplicateTokenError("All UUIDs assigned to a counter room must be distinct.")
+
+    # Verify none of the provided UUIDs are already registered to an existing room
+    already_registered = await check_tokens_exist(tokens_to_check, db_path=db_path)
+    if already_registered:
+        raise TokenAlreadyRegisteredError(
+            f"UUID(s) already registered: {', '.join(already_registered)}. "
+            "Cannot register the same UUID more than once. Connect directly using this UUID or generate new UUIDs."
+        )
 
     token_role_map: dict[str, str] = {
         ro_uuid: "read_only",

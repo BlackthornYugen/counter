@@ -70,6 +70,21 @@ async def init_db(db_path: str | None = None) -> None:
         await conn.commit()
 
 
+async def check_tokens_exist(tokens: list[str], db_path: str | None = None) -> list[str]:
+    """Checks which tokens already exist in counter_tokens. Returns list of existing raw tokens."""
+    existing = []
+    async with get_connection(db_path) as conn:
+        for t in tokens:
+            t_hash = hash_token(t)
+            cursor = await conn.execute(
+                "SELECT 1 FROM counter_tokens WHERE token_hash = ?", (t_hash,)
+            )
+            row = await cursor.fetchone()
+            if row:
+                existing.append(t)
+    return existing
+
+
 async def insert_counter(
     counter_id: str,
     name: str,

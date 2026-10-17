@@ -57,6 +57,50 @@ async def test_rest_register_2_uuids():
 
 
 @pytest.mark.asyncio
+async def test_rest_register_rejects_vanity_urls():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # 1. Vanity strings 'a', 'b', 'c'
+        res1 = await client.post("/api/counters/register", json={
+            "readOnlyUUID": "a",
+            "readWriteUUID": "b",
+            "adminUUID": "c",
+        })
+        assert res1.status_code in (400, 422)
+
+        # 2. Valid UUID format but wrong version (e.g. UUIDv1)
+        res2 = await client.post("/api/counters/register", json={
+            "readOnlyUUID": str(uuid.uuid1()),
+            "adminUUID": str(uuid.uuid4()),
+        })
+        assert res2.status_code in (400, 422)
+
+
+@pytest.mark.asyncio
+async def test_rest_register_duplicate_across_rooms_returns_409():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        ro1 = str(uuid.uuid4())
+        admin1 = str(uuid.uuid4())
+
+        # First registration succeeds with 201
+        res1 = await client.post("/api/counters/register", json={
+            "readOnlyUUID": ro1,
+            "adminUUID": admin1,
+        })
+        assert res1.status_code == 201
+
+        # Second registration with same admin UUID must return 409 Conflict (not 500)
+        ro2 = str(uuid.uuid4())
+        res2 = await client.post("/api/counters/register", json={
+            "readOnlyUUID": ro2,
+            "adminUUID": admin1,
+        })
+        assert res2.status_code == 409
+        assert "already registered" in res2.json()["detail"]
+
+
+@pytest.mark.asyncio
 async def test_rest_counter_lifecycle_and_permissions():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

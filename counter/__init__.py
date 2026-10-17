@@ -10,6 +10,8 @@ from counter.service import (
     InvalidTokenError,
     PermissionDeniedError,
     DuplicateTokenError,
+    TokenAlreadyRegisteredError,
+    InvalidUUIDError,
 )
 from counter.db import hash_token, init_db
 
@@ -24,4 +26,6 @@ __all__ = [
     "InvalidTokenError",
     "PermissionDeniedError",
     "DuplicateTokenError",
+    "TokenAlreadyRegisteredError",
+    "InvalidUUIDError",
 ]

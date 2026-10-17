@@ -37,9 +37,12 @@
           <h2 class="card-title">
             <span>🔐</span> Register Counter Room
           </h2>
-          <div class="pill-selector">
-            <button type="button" class="pill-btn active" id="btn-mode-3uuid">3 UUIDs</button>
-            <button type="button" class="pill-btn" id="btn-mode-2uuid">2 UUIDs</button>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button type="button" class="btn-secondary" id="btn-gen-all" style="padding:5px 12px; font-size:12px;">🎲 Generate All</button>
+            <div class="pill-selector">
+              <button type="button" class="pill-btn active" id="btn-mode-3uuid">3 UUIDs</button>
+              <button type="button" class="pill-btn" id="btn-mode-2uuid">2 UUIDs</button>
+            </div>
           </div>
         </div>
 
@@ -89,25 +92,34 @@
           </button>
         </form>
 
-        <!-- Registration Result Table -->
+        <!-- Registration Result Table & Role Cards -->
         <div class="reg-result-box" id="reg-result">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
             <strong style="color:var(--accent-cyan); font-size:13px;">✓ Counter Registered</strong>
             <span id="res-counter-id" style="font-family:var(--font-mono); font-size:11px; color:var(--text-dim);"></span>
           </div>
-          <table class="token-table">
-            <thead>
-              <tr>
-                <th>Role</th>
-                <th>Secret UUID</th>
-                <th>SQLite SHA-256 Hash</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody id="token-table-body">
-              <!-- Dynamically populated -->
-            </tbody>
-          </table>
+          
+          <!-- Role Link Cards (#hashtag) -->
+          <div class="role-cards-container" id="reg-role-cards">
+            <!-- Dynamically populated cards with #hashtag links -->
+          </div>
+
+          <details style="margin-top:14px; font-size:12px; color:var(--text-muted); cursor:pointer;">
+            <summary style="font-weight:600; color:var(--text-dim); margin-bottom:6px;">View SQLite SHA-256 Hashes</summary>
+            <table class="token-table">
+              <thead>
+                <tr>
+                  <th>Role</th>
+                  <th>Secret UUID</th>
+                  <th>SQLite SHA-256 Hash</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="token-table-body">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </details>
         </div>
       </section>
 
@@ -123,10 +135,24 @@
           </div>
         </div>
 
+        <!-- Connect with UUID bar -->
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label class="form-label" for="input-connect-uuid">
+            <span>Room Access UUID</span>
+            <span style="font-size:11px; color:var(--text-dim);">Paste any valid UUID to join room</span>
+          </label>
+          <div class="input-with-action">
+            <input type="text" id="input-connect-uuid" class="text-input" placeholder="Paste Read-Only, Read-Write, or Admin UUID...">
+            <button type="button" class="btn-primary" id="btn-connect-uuid" style="width: auto; padding: 0 18px; font-size: 13px;">
+              Connect
+            </button>
+          </div>
+        </div>
+
         <!-- Room Connection Controls -->
         <div class="room-controls-row">
-          <div>
-            <div style="font-size:11px; color:var(--text-dim); margin-bottom:6px; text-transform:uppercase;">Connect As Role</div>
+          <div id="role-switcher-container" style="display: none;">
+            <div style="font-size:11px; color:var(--text-dim); margin-bottom:6px; text-transform:uppercase;">Quick Role Switch</div>
             <div class="role-chips">
               <button type="button" class="chip-role active" data-role="admin" id="chip-admin">👑 Admin</button>
               <button type="button" class="chip-role" data-role="read_write" id="chip-rw">✍️ Read-Write</button>
@@ -134,13 +160,24 @@
             </div>
           </div>
 
-          <div style="text-align:right;">
+          <div style="text-align:right; margin-left:auto;">
             <div style="font-size:11px; color:var(--text-dim); margin-bottom:6px; text-transform:uppercase;">Stream Status</div>
             <div class="status-pill disconnected" id="status-pill">
               <span class="status-dot"></span>
               <span id="status-text">Disconnected</span>
             </div>
           </div>
+        </div>
+
+        <!-- Active Hashtag Link Bar -->
+        <div id="active-link-bar" class="active-link-bar" style="display: none;">
+          <div class="active-link-info">
+            <span style="font-size:11px; color:var(--text-dim); text-transform:uppercase;">Room Link:</span>
+            <a href="#" id="active-hashtag-anchor" class="active-hashtag-anchor" title="Current room hashtag link">#</a>
+          </div>
+          <button type="button" class="btn-copy-active-link" id="btn-copy-active-link" title="Copy shareable link with hashtag">
+            📋 Copy Share Link
+          </button>
         </div>
 
         <!-- Permissions Banner -->
