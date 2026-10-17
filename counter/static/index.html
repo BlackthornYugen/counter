@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quantum Counter - WebSockets, SSE & REST Counter Room</title>
+  <meta name="description" content="High-performance Python counter server with WebSockets, Server-Sent Events (SSE), and hashed UUID role-based security.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- Header -->
+    <header class="app-header">
+      <div class="logo-group">
+        <div class="logo-icon">⚡</div>
+        <div>
+          <h1 class="app-title">Quantum Counter</h1>
+          <p class="app-subtitle">Real-time WebSocket & SSE Synchronization with SQLite Token Hashing</p>
+        </div>
+      </div>
+      <div class="header-badges">
+        <span class="badge badge-server">● Python / FastAPI</span>
+        <a href="/docs" target="_blank" class="badge badge-docs">Swagger API Docs ↗</a>
+      </div>
+    </header>
+
+    <!-- Main Dashboard Grid -->
+    <div class="dashboard-grid">
+      
+      <!-- Card 1: Registration -->
+      <section class="card" id="card-registration">
+        <div class="card-title-row">
+          <h2 class="card-title">
+            <span>🔐</span> Register Counter Room
+          </h2>
+          <div class="pill-selector">
+            <button type="button" class="pill-btn active" id="btn-mode-3uuid">3 UUIDs</button>
+            <button type="button" class="pill-btn" id="btn-mode-2uuid">2 UUIDs</button>
+          </div>
+        </div>
+
+        <form id="reg-form" onsubmit="return false;">
+          <div class="form-group">
+            <label class="form-label" for="reg-name">
+              <span>Room Name</span>
+            </label>
+            <input type="text" id="reg-name" class="text-input" value="Production Counter" placeholder="e.g. My Counter Room">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="reg-ro-uuid">
+              <span>Read-Only UUID</span>
+              <span class="label-role-tag tag-ro">Read Only</span>
+            </label>
+            <div class="input-with-action">
+              <input type="text" id="reg-ro-uuid" class="text-input" placeholder="e.g. c768f56e-8ff4-4363-8822-79ee8ca6eef4">
+              <button type="button" class="btn-icon" title="Generate UUID" id="gen-ro-uuid">🎲</button>
+            </div>
+          </div>
+
+          <div class="form-group" id="group-rw-uuid">
+            <label class="form-label" for="reg-rw-uuid">
+              <span>Read-Write UUID</span>
+              <span class="label-role-tag tag-rw">Read Write</span>
+            </label>
+            <div class="input-with-action">
+              <input type="text" id="reg-rw-uuid" class="text-input" placeholder="e.g. e2244bb4-0997-4ef8-8280-9dfbf2ba1022">
+              <button type="button" class="btn-icon" title="Generate UUID" id="gen-rw-uuid">🎲</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="reg-admin-uuid">
+              <span>Admin UUID</span>
+              <span class="label-role-tag tag-admin">Admin</span>
+            </label>
+            <div class="input-with-action">
+              <input type="text" id="reg-admin-uuid" class="text-input" placeholder="e.g. 523a8867-b50a-4a25-a1c1-40c42be279ab">
+              <button type="button" class="btn-icon" title="Generate UUID" id="gen-admin-uuid">🎲</button>
+            </div>
+          </div>
+
+          <button type="button" class="btn-primary" id="btn-register">
+            <span>⚡</span> Register & Store Hashes in SQLite
+          </button>
+        </form>
+
+        <!-- Registration Result Table -->
+        <div class="reg-result-box" id="reg-result">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <strong style="color:var(--accent-cyan); font-size:13px;">✓ Counter Registered</strong>
+            <span id="res-counter-id" style="font-family:var(--font-mono); font-size:11px; color:var(--text-dim);"></span>
+          </div>
+          <table class="token-table">
+            <thead>
+              <tr>
+                <th>Role</th>
+                <th>Secret UUID</th>
+                <th>SQLite SHA-256 Hash</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="token-table-body">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Card 2: Interactive Live Client Room -->
+      <section class="card" id="card-client-room">
+        <div class="card-title-row">
+          <h2 class="card-title">
+            <span>🎮</span> Live Room Client
+          </h2>
+          <div class="pill-selector">
+            <button type="button" class="pill-btn active" id="btn-proto-ws">WebSocket</button>
+            <button type="button" class="pill-btn" id="btn-proto-sse">SSE</button>
+          </div>
+        </div>
+
+        <!-- Room Connection Controls -->
+        <div class="room-controls-row">
+          <div>
+            <div style="font-size:11px; color:var(--text-dim); margin-bottom:6px; text-transform:uppercase;">Connect As Role</div>
+            <div class="role-chips">
+              <button type="button" class="chip-role active" data-role="admin" id="chip-admin">👑 Admin</button>
+              <button type="button" class="chip-role" data-role="read_write" id="chip-rw">✍️ Read-Write</button>
+              <button type="button" class="chip-role" data-role="read_only" id="chip-ro">👁️ Read-Only</button>
+            </div>
+          </div>
+
+          <div style="text-align:right;">
+            <div style="font-size:11px; color:var(--text-dim); margin-bottom:6px; text-transform:uppercase;">Stream Status</div>
+            <div class="status-pill disconnected" id="status-pill">
+              <span class="status-dot"></span>
+              <span id="status-text">Disconnected</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Permissions Banner -->
+        <div class="permissions-banner">
+          <div>
+            <div style="font-size:11px; color:var(--text-dim);">Active Token Role</div>
+            <div id="active-role-display" style="font-size:14px; font-weight:700; color:#fff;">Admin</div>
+          </div>
+          <div class="perm-badges" id="perm-badges">
+            <span class="perm-badge allowed" id="perm-read">✓ View Updates</span>
+            <span class="perm-badge allowed" id="perm-write">✓ Inc / Dec</span>
+            <span class="perm-badge allowed" id="perm-admin">✓ Reset / Admin</span>
+          </div>
+        </div>
+
+        <!-- Dynamic Visual Counter Stage -->
+        <div class="counter-stage">
+          <div class="counter-value" id="counter-value-display">0</div>
+          <div class="counter-label" id="counter-room-name">Default Room</div>
+          <div id="delta-container"></div>
+        </div>
+
+        <!-- Counter Buttons Grid -->
+        <div class="controls-grid">
+          <button type="button" class="btn-counter btn-dec" id="btn-dec-10">-10</button>
+          <button type="button" class="btn-counter btn-dec" id="btn-dec-1">-1</button>
+          <button type="button" class="btn-counter btn-inc" id="btn-inc-1">+1</button>
+          <button type="button" class="btn-counter btn-inc" id="btn-inc-10">+10</button>
+          <button type="button" class="btn-counter btn-reset" id="btn-reset">↺ Reset</button>
+        </div>
+
+      </section>
+
+    </div>
+
+    <!-- Multi-Client Cross-Protocol Sync Simulator -->
+    <section class="card" style="margin-bottom: 28px;">
+      <div class="card-title-row">
+        <h2 class="card-title">
+          <span>🔄</span> Multi-Client Cross-Protocol Simulator (Live WS ↔ SSE Sync)
+        </h2>
+        <span class="badge" style="background:rgba(255,255,255,0.06); color:var(--text-muted);">
+          Simultaneous Real-time Connections
+        </span>
+      </div>
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom: 12px;">
+        Demonstrates cross-protocol pub/sub: when the Admin increments via WebSockets, the Read-Only user instantly receives the update via Server-Sent Events (SSE).
+      </p>
+
+      <div class="sim-grid">
+        <!-- Panel 1: Admin via WebSocket -->
+        <div class="sim-panel">
+          <div class="sim-panel-title">
+            <span style="color:#fda4af;">👑 Client 1: Admin (WebSocket)</span>
+            <span class="status-pill connected" id="sim-ws-status"><span class="status-dot"></span> Live</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-family:var(--font-mono); font-size:32px; font-weight:700;" id="sim-ws-val">0</div>
+            <div style="display:flex; gap:8px;">
+              <button type="button" class="btn-counter btn-dec" id="sim-btn-dec" style="padding:8px 14px; font-size:14px;">-1</button>
+              <button type="button" class="btn-counter btn-inc" id="sim-btn-inc" style="padding:8px 14px; font-size:14px;">+1</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Panel 2: Read-Only via SSE -->
+        <div class="sim-panel">
+          <div class="sim-panel-title">
+            <span style="color:#67e8f9;">👁️ Client 2: Read-Only (SSE)</span>
+            <span class="status-pill connected" id="sim-sse-status"><span class="status-dot"></span> Live</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-family:var(--font-mono); font-size:32px; font-weight:700;" id="sim-sse-val">0</div>
+            <div>
+              <span class="badge" style="background:rgba(6, 182, 212, 0.1); color:var(--accent-cyan); font-size:11px;">
+                Stream-Only (Writes Blocked)
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Real-time Event Stream / Audit Log -->
+    <section class="card stream-card">
+      <div class="card-title-row">
+        <h2 class="card-title">
+          <span>📡</span> Streaming Update Events & Audit Trail
+        </h2>
+        <div style="display:flex; gap:10px;">
+          <button type="button" class="btn-secondary" id="btn-clear-stream" style="padding:4px 10px; font-size:12px;">Clear Stream</button>
+        </div>
+      </div>
+
+      <div class="stream-feed" id="stream-feed">
+        <!-- Events stream here dynamically -->
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
