@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: counter-main
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://git.tower.jskw.dev/webapps/counter.git
+    path: ./chart
+    targetRevision: v*
+    helm:
+      parameters:
+        - name: image.repository
+          value: git.tower.jskw.dev/webapps/counter
+      valuesObject:
+        ingress:
+          enabled: true
+          hosts:
+            - counter.jskw.dev
+            - counter.jskw.ca
+            - counter.jsteelkw.ca
+            - counter.jsteelkw.dev
+            - counter.jsteel.ca
+            - counter.jsteel.dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gitea
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: false

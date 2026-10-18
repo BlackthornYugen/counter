@@ -1,0 +1,50 @@
+image:
+  repository: git.tower.jskw.dev/webapps/counter
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+
+ingress:
+  enabled: true
+  className: "haproxy"
+  annotations: {}
+  # Array of domains for the ingress
+  hosts:
+    - counter.jskw.dev
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+persistence:
+  enabled: true
+  # existingClaim: ""
+  # storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 1Gi
+  mountPath: /data
+
+probes:
+  liveness:
+    enabled: true
+    path: /health
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  readiness:
+    enabled: true
+    path: /health
+    initialDelaySeconds: 3
+    periodSeconds: 5
+
+env: {}
