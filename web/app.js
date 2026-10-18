@@ -996,11 +996,11 @@ document.addEventListener("DOMContentLoaded", () => {
           const card = document.createElement("div");
           card.className = `role-link-card card-role-${role}`;
 
-          // QR code colours per role
+          // QR code colours per role (dark, high-contrast role tints on clean white background)
           const qrColors = {
-            admin: { dark: "#f43f5e", light: "transparent" },
-            read_write: { dark: "#8b5cf6", light: "transparent" },
-            read_only: { dark: "#06b6d4", light: "transparent" },
+            admin: { dark: "#be123c", light: "#ffffff" },
+            read_write: { dark: "#6d28d9", light: "#ffffff" },
+            read_only: { dark: "#0e7490", light: "#ffffff" },
           };
           const colors = qrColors[role];
 
@@ -1009,31 +1009,35 @@ document.addEventListener("DOMContentLoaded", () => {
               <span class="role-card-badge">${icon} ${title}</span>
               <span class="label-role-tag tag-${role === 'admin' ? 'admin' : (role === 'read_write' ? 'rw' : 'ro')}">${desc}</span>
             </div>
-            <div class="role-card-qr-row">
-              <div class="role-card-qr" id="qr-${role}" title="Click to copy ${title} link"></div>
-              <a href="${shareHash}" class="role-card-link-text">${shareHash}</a>
+            <div class="role-card-qr-wrap">
+              <div class="role-card-qr" id="qr-${role}" title="Click to copy ${title} link" role="button" tabindex="0"></div>
             </div>
+            <div class="role-card-copy-hint">📋 Click QR to copy link</div>
           `;
           roleCardsContainer.appendChild(card);
 
-          // Generate QR code in the container
+          // Generate larger QR code with Level L for maximum module size and easy camera scanning
           const qrContainer = card.querySelector(`#qr-${role}`);
           new QRCode(qrContainer, {
             text: shareUrl,
-            width: 96,
-            height: 96,
+            width: 180,
+            height: 180,
             colorDark: colors.dark,
             colorLight: colors.light,
-            correctLevel: QRCode.CorrectLevel.M,
+            correctLevel: QRCode.CorrectLevel.L,
           });
 
           // Make the QR code clickable to copy
           qrContainer.style.cursor = "pointer";
-          qrContainer.addEventListener("click", (e) => {
+          const copyHandler = (e) => {
             e.preventDefault();
             e.stopPropagation();
             navigator.clipboard.writeText(shareUrl);
             showToast(`${title} link copied to clipboard!`, "success");
+          };
+          qrContainer.addEventListener("click", copyHandler);
+          qrContainer.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") copyHandler(e);
           });
         }
       }
