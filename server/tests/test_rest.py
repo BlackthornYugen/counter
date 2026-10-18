@@ -165,3 +165,12 @@ async def test_rest_counter_lifecycle_and_permissions():
         # 11. Subsequent access returns 401
         after_get = await client.get(f"/api/counters/{admin}")
         assert after_get.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_serve_privacy_route() -> None:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.get("/privacy")
+        assert res.status_code == 200
+        assert "Privacy Policy" in res.text
+
