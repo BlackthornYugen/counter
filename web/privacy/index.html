@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Privacy Policy — JSKW Counter</title>
-  <meta name="description" content="Privacy Policy for JSKW Counter (dev.jskw.count). Local-by-default, zero-identity synchronization, and role-based security.">
+  <meta name="description" content="Privacy Policy for JSKW Counter (dev.jskw.count) effective October 18, 2026. Local-by-default, zero-identity synchronization, and role-based security.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -49,8 +49,33 @@
             <strong>Application:</strong> Counter (<code>dev.jskw.count</code>)<br>
             <strong>Developer:</strong> John Steel<br>
             <strong>Contact:</strong> <a href="mailto:counter@jskw.dev">counter@jskw.dev</a><br>
-            <strong>Effective Date:</strong> October 17, 2026
+            <strong>Effective Date:</strong> October 18, 2026
           </p>
+        </div>
+
+        <!-- Version History & Compare Links -->
+        <div class="policy-version-panel">
+          <div class="version-panel-header">
+            <span class="version-panel-title">Policy Versions &amp; Audit Trail</span>
+          </div>
+          <div class="version-panel-body">
+            <ul class="version-list">
+              <li class="version-item active">
+                <span class="version-badge badge-active">Current</span>
+                <span class="version-link current-view">October 18, 2026 (<code>/privacy/2026-10-18</code>)</span>
+                <span class="version-meta">Active policy</span>
+              </li>
+              <li class="version-item">
+                <span class="version-badge badge-archived">Archived</span>
+                <a href="/privacy/2026-10-16" class="version-link">October 16, 2026 (<code>/privacy/2026-10-16</code>)</a>
+                <span class="version-meta">Previous version</span>
+              </li>
+            </ul>
+            <div class="version-compare-row">
+              <span class="compare-label">Quick Compare:</span>
+              <a href="/privacy/2026-10-16-vs-2026-10-18" class="btn-compare-pill">Compare with 2026-10-16 (Git Diff) &rarr;</a>
+            </div>
+          </div>
         </div>
 
         <!-- Table of Contents -->
@@ -65,6 +90,7 @@
             <li><a href="#permissions" class="toc-link">6. Device Permissions</a></li>
             <li><a href="#children" class="toc-link">7. Children's Privacy</a></li>
             <li><a href="#contact" class="toc-link">8. Contact Information</a></li>
+            <li><a href="#transparency" class="toc-link">9. Policy Versioning &amp; Transparency</a></li>
           </ul>
         </nav>
 
@@ -120,6 +146,7 @@
             <li><strong>Minimum Evaluation Baseline:</strong> We collect only the absolute minimum non-identifying technical metadata (e.g., app version string, general OS level) strictly needed to decide whether future telemetry or diagnostic infrastructure is ever required.</li>
             <li><strong>Email-Gated Opt-In:</strong> Diagnostic logging and usage tracking cannot be enabled passively. It requires explicit, affirmative opt-in with an email address.</li>
             <li><strong>Tester Recommendation:</strong> <strong>We strongly recommend that nobody opt in to tracking unless they are a trusted tester and John Steel has asked them to opt in in person.</strong> Unless John Steel has personally spoken with you in person and requested test logs, please leave telemetry and tracking disabled.</li>
+            <li><strong>Diagnostic Log Lifespan:</strong> Any opt-in diagnostic logs submitted by designated testers are automatically scheduled for hard deletion after 30 days and are never shared or combined with third-party datasets.</li>
           </ul>
         </section>
 
@@ -128,6 +155,9 @@
           <ul class="privacy-bullet-list">
             <li><strong>Local Data Deletion:</strong> Deleting a counter inside the local app immediately removes the local record and stored UUIDs from device storage.</li>
             <li><strong>Server Permanent Removal:</strong> You can permanently delete a synchronized counter from the server at any time by issuing a delete request with that counter's Private UUID from the App or web interface. Upon verifying the hash, the counter tally and both hashes are permanently erased from our database.</li>
+            <li><strong>Inactivity Purge Policy:</strong> Unless explicitly told otherwise by the developer, all counters are purged from the server after 90 days. All records of counters purged will be cleared 30 days after that (120 days after inactivity).</li>
+            <li><strong>Early Log Purge &amp; GDPR Data Requests:</strong> You may request an early purge of your logs and counters at any time by emailing your Private (admin) token to <a href="mailto:counter@jskw.dev">counter@jskw.dev</a> with <code>GDPR REQUEST</code> at the start of the subject line. We will purge all logs and counters associated with the provided token. Upon request, we will also optionally email you a ZIP archive containing all relevant logs with IP addresses redacted. We make every effort to respond as quickly as possible, though processing may take up to 30 days.</li>
+            <li><strong>Self-Service Sync Verification:</strong> Users may inspect their public counter data at any time directly through the REST API or web interface without authenticating.</li>
             <li><strong>No Data Monetization:</strong> We do not sell, rent, monetize, or transfer your counter data, hashes, or diagnostic emails to data brokers, ad networks, or third parties.</li>
           </ul>
         </section>
@@ -156,10 +186,18 @@
               <strong>Developer:</strong> John Steel<br>
               <strong>Package Name:</strong> <code>dev.jskw.count</code><br>
               <strong>Email:</strong> <a href="mailto:counter@jskw.dev">counter@jskw.dev</a><br>
+              <strong>GDPR &amp; Early Purge:</strong> Email with <code>GDPR REQUEST</code> in the subject line<br>
               <strong>App Portal:</strong> <a href="https://counter.jskw.dev" target="_blank" rel="noopener">counter.jskw.dev</a><br>
               <strong>Policy Location:</strong> <a href="https://counter.jskw.dev/privacy" target="_blank" rel="noopener">counter.jskw.dev/privacy</a>
             </p>
           </div>
+        </section>
+
+        <section id="transparency" class="privacy-section">
+          <h2>9. Policy Versioning &amp; Transparency</h2>
+          <p>
+            We believe privacy policies should be fully auditable and transparent. All previous iterations of this policy remain permanently accessible and version-controlled. You can review past policies or inspect exact line-by-line git diffs comparing any two versions directly through our version comparison tool at <a href="/privacy/2026-10-16-vs-2026-10-18">/privacy/2026-10-16-vs-2026-10-18</a>.
+          </p>
         </section>
 
         <div class="privacy-footer-nav">

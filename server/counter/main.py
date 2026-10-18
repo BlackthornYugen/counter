@@ -10,6 +10,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from counter.config import HOST, PORT, STATIC_DIR, GIT_HASH
 from counter.db import init_db
 from counter.api import router as api_router
+from counter.privacy import router as privacy_router
 
 
 @asynccontextmanager
@@ -63,10 +64,8 @@ async def serve_index() -> FileResponse:
     return FileResponse(str(index_file))
 
 
-@app.get("/privacy", include_in_schema=False)
-@app.get("/privacy/", include_in_schema=False)
-async def serve_privacy() -> FileResponse:
-    return FileResponse(str(STATIC_DIR / "privacy" / "index.html"))
+# Mount Privacy Policy router (versioning and diff comparison)
+app.include_router(privacy_router)
 
 
 
