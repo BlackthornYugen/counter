@@ -202,16 +202,39 @@ function isValidUuid(token) {
 }
 
 // Parses up to 3 UUIDs from an anchor / string, assuming any non-uuidv4 char is a delimiter.
+function normalizeHash(hash) {
+  if (!hash) return "";
+  try {
+    return decodeURIComponent(hash);
+  } catch (e) {
+    return hash;
+  }
+}
+
+// Parses up to 3 UUIDs from an anchor / string, assuming any non-uuidv4 char is a delimiter.
 // Compresses multiple sequences of delimiters.
 // If the first candidate isn't a valid UUID (e.g. vanity name), it safely ignores it without error.
 function parseAnchorUuids(rawInput) {
   if (!rawInput) return [];
+  let inputStr = rawInput;
+  if (inputStr.includes("://")) {
+    const hashIdx = inputStr.indexOf("#");
+    if (hashIdx !== -1) {
+      inputStr = inputStr.substring(hashIdx);
+    }
+  }
+
   let decoded = "";
   try {
-    decoded = decodeURIComponent(rawInput);
+    decoded = decodeURIComponent(inputStr);
   } catch (e) {
-    decoded = rawInput;
+    decoded = inputStr;
   }
+  try {
+    if (decoded.includes("%20")) {
+      decoded = decodeURIComponent(decoded);
+    }
+  } catch (e) {}
 
   const trimmed = decoded.replace(/^#+/, "").trim();
   if (!trimmed) return [];
@@ -241,15 +264,29 @@ function parseAnchorUuids(rawInput) {
 
 let currentCounterLabel = null;
 
-// Parses the counter label from the anchor (first non-UUID section if not a role keyword)
+// Parses the counter label from the anchor (first non-UUID section if not a role keyword).
+// Decodes URL-encoded characters (like %20 to space) first.
 function parseAnchorLabel(rawInput) {
   if (!rawInput) return null;
+  let inputStr = rawInput;
+  if (inputStr.includes("://")) {
+    const hashIdx = inputStr.indexOf("#");
+    if (hashIdx !== -1) {
+      inputStr = inputStr.substring(hashIdx);
+    }
+  }
+
   let decoded = "";
   try {
-    decoded = decodeURIComponent(rawInput);
+    decoded = decodeURIComponent(inputStr);
   } catch (e) {
-    decoded = rawInput;
+    decoded = inputStr;
   }
+  try {
+    if (decoded.includes("%20")) {
+      decoded = decodeURIComponent(decoded);
+    }
+  } catch (e) {}
 
   const trimmed = decoded.replace(/^#+/, "").trim();
   if (!trimmed) return null;
@@ -293,7 +330,8 @@ function parseAnchorLabel(rawInput) {
   return candidateLabel;
 }
 
-// Builds shareable hash containing the label as the first section and all lower-level UUIDs up to the given role
+// Builds shareable hash containing the label as the first section and all lower-level UUIDs up to the given role.
+// Encodes spaces in the label to "%20" so shared links are valid and robust.
 // Admin: #<Label>#read#<uuid>#write#<uuid>#admin#<uuid>
 // Read-Write: #<Label>#read#<uuid>#write#<uuid>
 // Read-Only: #<Label>#read#<uuid>
@@ -306,9 +344,13 @@ function buildShareHash(role, tokens, customLabel = null) {
   const parts = [];
 
   // First section of shared links is the counter label (e.g. "Counter 00fb10a2")
-  const label = customLabel || currentCounterLabel || (activeCounterId ? `Counter ${activeCounterId.substring(0, 8)}` : null);
-  if (label) {
-    parts.push(label);
+  const rawLabel = customLabel || currentCounterLabel || (activeCounterId ? `Counter ${activeCounterId.substring(0, 8)}` : null);
+  if (rawLabel) {
+    let cleanLabel = rawLabel;
+    try {
+      cleanLabel = decodeURIComponent(rawLabel);
+    } catch (e) {}
+    parts.push(encodeURIComponent(cleanLabel));
   }
 
   if (role === "admin") {
@@ -322,13 +364,14 @@ function buildShareHash(role, tokens, customLabel = null) {
     if (readToken) parts.push(`read#${readToken}`);
   }
 
-  if (parts.length === 0 || (parts.length === 1 && label)) {
+  if (parts.length === 0 || (parts.length === 1 && rawLabel)) {
+    const encodedLabel = parts.length === 1 ? parts[0] : "";
     const fallbackToken = tokens[role] || adminToken || writeToken || readToken;
     if (fallbackToken) {
-      if (label) return `#${label}#${fallbackToken}`;
+      if (encodedLabel) return `#${encodedLabel}#${fallbackToken}`;
       return `#${fallbackToken}`;
     }
-    return label ? `#${label}` : "";
+    return encodedLabel ? `#${encodedLabel}` : "";
   }
 
   return `#${parts.join("#")}`;
@@ -477,7 +520,7 @@ async function handleLoadedUuids(uuids, updateHash = true, rawInput = null) {
     const shareHash = buildShareHash(currentRole, activeTokens, currentCounterLabel);
     updateShareLinks(currentRole, activeTokens);
 
-    if (updateHash && window.location.hash !== shareHash) {
+    if (updateHash && normalizeHash(window.location.hash) !== normalizeHash(shareHash)) {
       lastHandledHash = shareHash;
       window.location.hash = shareHash;
     } else {
@@ -593,7 +636,7 @@ async function connectWithToken(token, updateHash = true, customLabel = null) {
     updateShareLinks(currentRole, activeTokens);
 
     // Update URL hashtag
-    if (updateHash && shareHash && window.location.hash !== shareHash) {
+    if (updateHash && shareHash && normalizeHash(window.location.hash) !== normalizeHash(shareHash)) {
       lastHandledHash = shareHash;
       window.location.hash = shareHash;
     }
@@ -1131,7 +1174,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Listen to browser hash changes (e.g. user clicks back/forward or a role card #link)
   window.addEventListener("hashchange", () => {
     const currentHash = window.location.hash;
-    if (currentHash === lastHandledHash) return;
+    if (normalizeHash(currentHash) === normalizeHash(lastHandledHash)) return;
     const uuids = parseAnchorUuids(currentHash);
     if (uuids.length > 0) {
       lastHandledHash = currentHash;

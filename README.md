@@ -272,27 +272,30 @@ The canonical anchor scheme places a **counter label** first, followed by role t
 #### Shared Links by Role:
 - **👑 Admin Link (3-UUID Room)**: Includes all lower-level tokens:
   ```
-  http://localhost:8000/#Counter 00fb10a2#read#c768f56e-8ff4-4363-8822-79ee8ca6eef4#write#e2244bb4-0997-4ef8-8280-9dfbf2ba1022#admin#523a8867-b50a-4a25-a1c1-40c42be279ab
+  http://localhost:8000/#Counter%2000fb10a2#read#c768f56e-8ff4-4363-8822-79ee8ca6eef4#write#e2244bb4-0997-4ef8-8280-9dfbf2ba1022#admin#523a8867-b50a-4a25-a1c1-40c42be279ab
   ```
 - **👑 Admin Link (2-UUID Room)**: Write token is omitted:
   ```
-  http://localhost:8000/#Counter 00fb10a2#read#c768f56e-8ff4-4363-8822-79ee8ca6eef4#admin#523a8867-b50a-4a25-a1c1-40c42be279ab
+  http://localhost:8000/#Counter%2000fb10a2#read#c768f56e-8ff4-4363-8822-79ee8ca6eef4#admin#523a8867-b50a-4a25-a1c1-40c42be279ab
   ```
 - **✍️ Read-Write Link**: Includes read and write tokens:
   ```
-  http://localhost:8000/#Counter 00fb10a2#read#c768f56e-8ff4-4363-8822-79ee8ca6eef4#write#e2244bb4-0997-4ef8-8280-9dfbf2ba1022
+  http://localhost:8000/#Counter%2000fb10a2#read#c768f56e-8ff4-4363-8822-79ee8ca6eef4#write#e2244bb4-0997-4ef8-8280-9dfbf2ba1022
   ```
 - **👁️ Read-Only Link**: Includes only the read token:
   ```
-  http://localhost:8000/#Counter 00fb10a2#read#c768f56e-8ff4-4363-8822-79ee8ca6eef4
+  http://localhost:8000/#Counter%2000fb10a2#read#c768f56e-8ff4-4363-8822-79ee8ca6eef4
   ```
 
 ---
 
-### 2. Counter Label & User Renaming
+### 2. Counter Label, URL-Encoding & User Renaming
 
 - **Default Label**: When a counter room is registered or connected without an existing label, clients default the name to `Counter <counter_id[:8]>` (for example, `Counter 00fb10a2`).
-- **User Renaming**: Users can rename their counter before sharing simply by editing the text before the tokens in the URL (e.g., `#Kitchen Inventory#read#...#write#...`).
+- **URL-Encoding for Links (`%20`)**:
+  - To prevent URLs from breaking when shared in chat, email, or third-party apps, generated links URL-encode spaces in the counter label to `%20` (e.g. `Counter%2000fb10a2`).
+  - Clients always **decode** the URL first so `%20` is restored as a single space character (`" "`) when parsing and displaying the counter status title in the UI.
+- **User Renaming**: Users can rename their counter before sharing simply by editing the text before the tokens in the URL (e.g., `#Kitchen%20Inventory#read#...#write#...` or `#Kitchen Inventory#read#...`).
 - **Client Label Parsing**:
   - The **first non-UUID section** of the anchor is parsed as the counter's display label.
   - If the first section is a valid UUID, starts with a UUID, or is a reserved role keyword (`read`, `write`, `admin`, `read_only`, `read_write`, `ro`, `rw`), it is **not** treated as a label.
@@ -304,16 +307,19 @@ The canonical anchor scheme places a **counter label** first, followed by role t
 
 Clients (including the Android app and web dashboard) follow these specifications when parsing incoming deep links or user-pasted strings:
 
-1. **Delimiter Flexibility & Compression**:
+1. **URL Decoding**:
+   - Clients decode incoming URLs (`URLDecoder.decode(...)` / `decodeURIComponent(...)`) before parsing so `%20` becomes a single space character.
+   - If a full URL is provided (e.g. `http://.../#...`), only the fragment after `#` is processed.
+2. **Delimiter Flexibility & Compression**:
    - Any character outside of the standard UUIDv4 character set (`[0-9a-fA-F-]`) or sequence of repeated hyphens (`--+`) is considered a delimiter (such as `#`, spaces, hyphens, commas, bangs `!`, colons, or slashes).
    - Multiple consecutive delimiters are compressed into one. For instance, `#uuid1 - uuid2 - uuid3` or `#uuid1#uuid2!uuid3#uuid4ignored` are parsed identically.
-2. **Parse Up to 3 UUIDs**:
+3. **Parse Up to 3 UUIDs**:
    - Clients scan for valid UUIDv4 tokens (`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).
    - Up to **3 UUIDs** are extracted. Any additional UUID candidates beyond the 3rd are safely ignored.
-3. **Role Resolution & Clobbering**:
+4. **Role Resolution & Clobbering**:
    - Extracted UUIDs are verified via `GET /api/counters/{uuid}` to identify each token's role (`read_only`, `read_write`, `admin`).
    - If an anchor contains duplicate tokens for the same role (e.g., `admin#admin#read`), the **later** UUID clobbers earlier ones. If no write token exists, `read_write` remains unassigned.
-4. **Graceful Handling of Vanity & Non-UUID Candidates**:
+5. **Graceful Handling of Vanity & Non-UUID Candidates**:
    - If the anchor contains vanity names or arbitrary words that are not valid UUIDs (e.g., `#my cool uuids#cool1#cool2#cool3`), candidates that fail the UUIDv4 test are safely skipped without displaying error toasts or disrupting the application.
 
 ---
@@ -340,10 +346,19 @@ object CounterLinkParser {
     fun parse(rawInput: String?): ParsedCounterLink {
         if (rawInput.isNullOrBlank()) return ParsedCounterLink(null, emptyList())
 
+        var input = rawInput
+        if (input.contains("://")) {
+            val hashIdx = input.indexOf('#')
+            if (hashIdx != -1) {
+                input = input.substring(hashIdx)
+            }
+        }
+
+        // Decode URL first so %20 becomes a single space character
         val decoded = try {
-            java.net.URLDecoder.decode(rawInput, "UTF-8")
+            java.net.URLDecoder.decode(input, "UTF-8")
         } catch (_: Exception) {
-            rawInput
+            input
         }
         val trimmed = decoded.trimStart('#').trim()
         if (trimmed.isEmpty()) return ParsedCounterLink(null, emptyList())
