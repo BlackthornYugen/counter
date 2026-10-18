@@ -15,7 +15,7 @@ android {
         applicationId = "dev.jskw.count"
         minSdk = 24
         targetSdk = 37
-        versionCode = 2
+        versionCode = 3
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -81,6 +81,7 @@ dependencies {
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.content.negotiation)
+    implementation(libs.ktor.client.websockets)
     implementation(libs.ktor.serialization.kotlinx.json)
 
     implementation(platform(libs.okhttpBom))

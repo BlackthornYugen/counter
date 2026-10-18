@@ -4,6 +4,7 @@ import dev.jskw.counter.data.local.CounterDao
 import dev.jskw.counter.data.model.Counter
 import dev.jskw.counter.data.remote.CounterApiService
 import dev.jskw.counter.util.AppLog
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 
@@ -202,9 +203,10 @@ class CounterRepositoryImpl(
                 counterDao.updateCounter(nextCounter)
                 AppLog.d(TAG, "observeRemoteCount: received remote value ${remoteState.value} for id=$id")
                 emit(Result.success(nextCounter))
-            }.onFailure {
-                AppLog.e(TAG, "observeRemoteCount: stream error for id=$id: ${it.message}", it)
-                emit(Result.failure(it))
+            }.onFailure { err ->
+                if (err is CancellationException) throw err
+                AppLog.e(TAG, "observeRemoteCount: stream error for id=$id: ${err.message}", err)
+                emit(Result.failure(err))
             }
         }
     }

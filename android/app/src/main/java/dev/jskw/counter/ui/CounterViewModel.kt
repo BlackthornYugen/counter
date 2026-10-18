@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import dev.jskw.counter.data.model.Counter
 import dev.jskw.counter.data.repository.CounterRepository
 import dev.jskw.counter.util.AppLog
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -215,11 +216,13 @@ class CounterViewModel(
                         // The repository updates the DB which updates the flows, so we just
                         // observe for errors.
                     }.onFailure { e ->
+                        if (e is CancellationException) return@onFailure
                         AppLog.e("CounterVM", "observeRemoteCount error for $id: ${e.message}", e)
                         _userMessage.value = "Live sync interrupted: ${e.message}"
                     }
                 }
             } catch(e: Exception) {
+               if (e is CancellationException) throw e
                AppLog.e("CounterVM", "observeRemoteCount exception for $id: ${e.message}", e)
                _userMessage.value = "Live sync interrupted: ${e.message}"
             }

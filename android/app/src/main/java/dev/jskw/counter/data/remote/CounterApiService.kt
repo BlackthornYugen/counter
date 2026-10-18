@@ -1,5 +1,7 @@
 package dev.jskw.counter.data.remote
 
+import kotlinx.coroutines.flow.Flow
+
 interface CounterApiService {
     suspend fun publishCounter(
         initialCount: Int,
@@ -9,12 +11,12 @@ interface CounterApiService {
     ): Result<RegisterResponse>
 
     suspend fun incrementCounter(token: String): Result<Boolean>
-    
+
     suspend fun decrementCounter(token: String): Result<Boolean>
 
     suspend fun deleteCounter(token: String): Result<Boolean>
 
     suspend fun fetchLiveCount(token: String): Result<CounterInfoResponse>
 
-    fun observeLiveCount(token: String): kotlinx.coroutines.flow.Flow<Result<SseUpdate>>
+    fun observeLiveCount(token: String): Flow<Result<LiveUpdate>>
 }

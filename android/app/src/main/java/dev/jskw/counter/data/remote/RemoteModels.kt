@@ -31,6 +31,14 @@ data class CounterInfoResponse(
 )
 
 @Serializable
-data class SseUpdate(
+data class LiveUpdate(
     val value: Int
+)
+
+@Serializable
+data class WebSocketUpdate(
+    val type: String? = null,
+    val value: Int? = null,
+    val action: String? = null,
+    val counter_id: String? = null
 )

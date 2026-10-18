@@ -6,8 +6,8 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.plugins.sse.SSE
-import io.ktor.client.plugins.sse.sse
+import io.ktor.client.plugins.websocket.WebSockets
+import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.post
@@ -17,6 +17,9 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
+import io.ktor.websocket.Frame
+import io.ktor.websocket.readText
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
@@ -131,33 +134,41 @@ class KtorCounterApiService(
         AppLog.e(TAG, "fetchLiveCount unexpected error: ${e.message}", e)
     }
 
-    override fun observeLiveCount(token: String): Flow<Result<SseUpdate>> = flow {
-        AppLog.i(TAG_SSE, "observeLiveCount connecting for token=$token at $baseUrl/sse/$token")
+    override fun observeLiveCount(token: String): Flow<Result<LiveUpdate>> = flow {
+        val wsUrl = baseUrl
+            .replace("http://", "ws://")
+            .replace("https://", "wss://") + "/ws/$token"
+
+        AppLog.i(TAG_WS, "observeLiveCount connecting via WebSocket for token=$token at $wsUrl")
         try {
             val jsonParser = Json { ignoreUnknownKeys = true }
-            httpClient.sse("$baseUrl/sse/$token") {
-                incoming.collect { event ->
-                    event.data?.let { jsonString ->
+            httpClient.webSocket(wsUrl) {
+                for (frame in incoming) {
+                    if (frame is Frame.Text) {
+                        val text = frame.readText()
+                        AppLog.d(TAG_WS, "Received WS message for token=$token: $text")
                         try {
-                            AppLog.d(TAG_SSE, "Received SSE event for token=$token: $jsonString")
-                            val state = jsonParser.decodeFromString<SseUpdate>(jsonString)
-                            emit(Result.success(state))
+                            val parsed = jsonParser.decodeFromString<WebSocketUpdate>(text)
+                            if (parsed.value != null) {
+                                emit(Result.success(LiveUpdate(value = parsed.value)))
+                            }
                         } catch (e: Exception) {
-                            AppLog.e(TAG_SSE, "Failed to decode SSE JSON for token=$token: $jsonString", e)
-                            emit(Result.failure(e))
+                            if (e is CancellationException) throw e
+                            AppLog.e(TAG_WS, "Failed to decode WS JSON for token=$token: $text", e)
                         }
                     }
                 }
             }
         } catch (e: Exception) {
-            AppLog.e(TAG_SSE, "observeLiveCount stream error for token=$token: ${e.message}", e)
+            if (e is CancellationException) throw e
+            AppLog.e(TAG_WS, "observeLiveCount WebSocket error for token=$token: ${e.message}", e)
             emit(Result.failure(e))
         }
     }
 
     companion object {
         private const val TAG = "CounterApi"
-        private const val TAG_SSE = "CounterSSE"
+        private const val TAG_WS = "CounterWS"
         private const val TAG_HTTP = "CounterHttp"
 
         fun createDefaultHttpClient(): HttpClient {
@@ -176,7 +187,7 @@ class KtorCounterApiService(
                         isLenient = true
                     })
                 }
-                install(SSE)
+                install(WebSockets)
             }
         }
     }

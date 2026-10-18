@@ -81,7 +81,7 @@ fun CounterApp(
         viewModel.syncPublishedCounters()
     }
 
-    // Stream SSE events only while the app is actively in the foreground
+    // Stream live count events via WebSockets only while the app is actively in the foreground
     LifecycleResumeEffect(pinnedCounters, uiState.selectedCounterId, uiState.selectedCounter?.isPublished) {
         viewModel.observePinnedPublishedCounters(pinnedCounters)
         val selected = uiState.selectedCounter

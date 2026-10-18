@@ -5,7 +5,7 @@ import dev.jskw.counter.data.model.Counter
 import dev.jskw.counter.data.remote.CounterApiService
 import dev.jskw.counter.data.remote.RegisterResponse
 import dev.jskw.counter.data.remote.CounterInfoResponse
-import dev.jskw.counter.data.remote.SseUpdate
+import dev.jskw.counter.data.remote.LiveUpdate
 import dev.jskw.counter.data.repository.CounterRepositoryImpl
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -106,8 +106,8 @@ class FakeCounterApiService : CounterApiService {
         return Result.success(CounterInfoResponse(counter_id = "test", value = 42, access = "admin"))
     }
 
-    override fun observeLiveCount(token: String): kotlinx.coroutines.flow.Flow<Result<SseUpdate>> = kotlinx.coroutines.flow.flow {
-        emit(Result.success(SseUpdate(value = 42)))
+    override fun observeLiveCount(token: String): kotlinx.coroutines.flow.Flow<Result<LiveUpdate>> = kotlinx.coroutines.flow.flow {
+        emit(Result.success(LiveUpdate(value = 42)))
     }
 }
 
