@@ -117,11 +117,11 @@ class CounterRepositoryImpl(
         return updatePinnedStatus(id, !current.isPinned)
     }
 
-    override suspend fun deleteCounter(id: String) {
+    override suspend fun deleteCounter(id: String, deleteOnServer: Boolean) {
         val current = counterDao.getCounterById(id)
         val adminToken = current?.effectiveAdminToken
-        AppLog.d(TAG, "deleteCounter: deleting id=$id, isPublished=${current?.isPublished}, adminToken=$adminToken")
-        if (current != null && current.isPublished && adminToken != null) {
+        AppLog.d(TAG, "deleteCounter: deleting id=$id, deleteOnServer=$deleteOnServer, isPublished=${current?.isPublished}, adminToken=$adminToken")
+        if (deleteOnServer && current != null && current.isPublished && adminToken != null) {
             val remoteResult = apiService.deleteCounter(adminToken)
             remoteResult.onFailure { e ->
                 AppLog.w(TAG, "deleteCounter: remote delete failed: ${e.message}", e)
@@ -129,6 +129,16 @@ class CounterRepositoryImpl(
         }
         counterDao.deleteCounterById(id)
         pushAllToWear()
+    }
+
+    override suspend fun forgetAdminKey(id: String): Counter? {
+        val current = counterDao.getCounterById(id) ?: return null
+        if (current.deleteUuid == null) return current
+        val updated = current.copy(deleteUuid = null)
+        counterDao.updateCounter(updated)
+        pushAllToWear()
+        AppLog.i(TAG, "forgetAdminKey: cleared deleteUuid for counter id=$id")
+        return updated
     }
 
     override suspend fun updateCounter(counter: Counter) {
@@ -192,12 +202,14 @@ class CounterRepositoryImpl(
             ?: return Result.failure(IllegalArgumentException("Counter with id $id not found"))
 
         val adminToken = current.effectiveAdminToken
+        if (adminToken == null) {
+            return Result.failure(IllegalStateException("Admin permission is required to unpublish counter"))
+        }
         AppLog.d(TAG, "unpublishCounter: unpublishing id=$id, adminToken=$adminToken")
-        if (adminToken != null) {
-            val delResult = apiService.deleteCounter(adminToken)
-            delResult.onFailure { e ->
-                AppLog.w(TAG, "unpublishCounter: remote delete returned error: ${e.message}", e)
-            }
+        val delResult = apiService.deleteCounter(adminToken)
+        delResult.onFailure { e ->
+            AppLog.w(TAG, "unpublishCounter: remote delete returned error: ${e.message}", e)
+            return Result.failure(e)
         }
         val unpublished = current.copy(
             isPublished = false
@@ -280,22 +292,23 @@ class CounterRepositoryImpl(
             return Result.failure(IllegalStateException("Could not resolve any token on server"))
         }
 
+        val roUuid = resolvedReadOnlyUuid
+        if (roUuid == null) {
+            return Result.failure(IllegalArgumentException("Link does not contain a valid read-only token"))
+        }
+
         val title = parsed.label?.takeIf { it.isNotBlank() }
             ?: "Counter ${resolvedCounterId.take(8)}"
 
         val existingCounters = counterDao.getAllCounters().firstOrNull() ?: emptyList()
-        val existing = existingCounters.find {
-            (resolvedReadOnlyUuid != null && it.viewUuid == resolvedReadOnlyUuid) ||
-            (resolvedReadWriteUuid != null && it.updateUuid == resolvedReadWriteUuid) ||
-            (resolvedAdminUuid != null && it.deleteUuid == resolvedAdminUuid)
-        }
+        val existing = existingCounters.find { it.viewUuid == roUuid }
 
         if (existing != null) {
             val updated = existing.copy(
                 title = parsed.label?.takeIf { it.isNotBlank() } ?: existing.title,
                 count = latestValue,
                 isPublished = true,
-                viewUuid = resolvedReadOnlyUuid ?: existing.viewUuid,
+                viewUuid = roUuid,
                 updateUuid = resolvedReadWriteUuid ?: existing.updateUuid,
                 deleteUuid = resolvedAdminUuid ?: existing.deleteUuid
             )
@@ -309,7 +322,7 @@ class CounterRepositoryImpl(
                 title = title,
                 count = latestValue,
                 isPublished = true,
-                viewUuid = resolvedReadOnlyUuid,
+                viewUuid = roUuid,
                 updateUuid = resolvedReadWriteUuid,
                 deleteUuid = resolvedAdminUuid
             )

@@ -23,7 +23,16 @@ val Counter.canIncrementDecrement: Boolean
     get() = !isPublished || updateUuid != null || deleteUuid != null
 
 val Counter.canDelete: Boolean
-    get() = !isPublished || deleteUuid != null
+    get() = true
+
+val Counter.canDeleteOnServer: Boolean
+    get() = isPublished && deleteUuid != null
+
+val Counter.canUnpublish: Boolean
+    get() = isPublished && deleteUuid != null
+
+val Counter.canForgetAdminKey: Boolean
+    get() = deleteUuid != null
 
 val Counter.effectiveReadToken: String?
     get() = viewUuid ?: updateUuid ?: deleteUuid

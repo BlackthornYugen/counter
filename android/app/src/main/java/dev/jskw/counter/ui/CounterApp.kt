@@ -158,13 +158,16 @@ fun CounterApp(
                     onTogglePin = { counterId ->
                         handleTogglePin(counterId)
                     },
-                    onDelete = { counterId ->
-                        viewModel.deleteCounter(counterId)
+                    onDelete = { counterId, deleteOnServer ->
+                        viewModel.deleteCounter(counterId, deleteOnServer)
                         scope.launch {
                             if (navigator.canNavigateBack()) {
                                 navigator.navigateBack()
                             }
                         }
+                    },
+                    onForgetAdminKey = { counterId ->
+                        viewModel.forgetAdminKey(counterId)
                     },
                     onTogglePublish = { viewModel.togglePublishCounter(it) },
                     onShowMessage = { msg ->

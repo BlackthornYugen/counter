@@ -10,7 +10,8 @@ interface CounterRepository {
     suspend fun createCounter(title: String, initialCount: Int = 0): Counter
     suspend fun incrementCounter(id: String): Counter?
     suspend fun decrementCounter(id: String): Counter?
-    suspend fun deleteCounter(id: String)
+    suspend fun deleteCounter(id: String, deleteOnServer: Boolean = true)
+    suspend fun forgetAdminKey(id: String): Counter?
     suspend fun updateCounter(counter: Counter)
     suspend fun updatePinnedStatus(id: String, isPinned: Boolean): Counter?
     suspend fun togglePin(id: String): Counter?

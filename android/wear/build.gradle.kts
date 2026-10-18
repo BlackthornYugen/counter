@@ -12,7 +12,7 @@ android {
         applicationId = "dev.jskw.count"
         minSdk = 25
         targetSdk = 37
-        versionCode = 10
+        versionCode = 12
         versionName = "1.0"
     }
 

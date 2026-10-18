@@ -37,6 +37,7 @@ import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Share
@@ -45,6 +46,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -79,7 +81,10 @@ import dev.jskw.counter.BuildConfig
 import dev.jskw.counter.data.model.Counter
 import dev.jskw.counter.data.model.availableShareRoles
 import dev.jskw.counter.data.model.canDelete
+import dev.jskw.counter.data.model.canDeleteOnServer
+import dev.jskw.counter.data.model.canForgetAdminKey
 import dev.jskw.counter.data.model.canIncrementDecrement
+import dev.jskw.counter.data.model.canUnpublish
 import dev.jskw.counter.data.model.effectiveReadToken
 import dev.jskw.counter.ui.theme.CounterTheme
 import dev.jskw.counter.util.CounterLinkParser
@@ -93,13 +98,18 @@ fun CounterDetailPane(
     onIncrement: (String) -> Unit,
     onDecrement: (String) -> Unit,
     onTogglePin: (String) -> Unit,
-    onDelete: (String) -> Unit,
+    onDelete: (id: String, deleteOnServer: Boolean) -> Unit,
+    onForgetAdminKey: (String) -> Unit = {},
     onTogglePublish: (String) -> Unit,
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier,
     onBackClick: (() -> Unit)? = null
 ) {
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var showForgetAdminConfirmDialog by remember { mutableStateOf(false) }
+    var deleteOnServer by remember(counter?.id, showDeleteConfirmDialog) {
+        mutableStateOf(counter?.canDeleteOnServer == true)
+    }
     val context = LocalContext.current
 
     if (counter == null) {
@@ -139,23 +149,71 @@ fun CounterDetailPane(
     if (showDeleteConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirmDialog = false },
-            title = { Text("Delete Counter") },
-            text = { Text("Are you sure you want to delete '${counter.title}'? This action cannot be undone.") },
+            title = { Text("Remove Counter") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Are you sure you want to remove '${counter.title}' from this device?")
+                    if (counter.canDeleteOnServer) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Checkbox(
+                                checked = deleteOnServer,
+                                onCheckedChange = { deleteOnServer = it }
+                            )
+                            Text(
+                                text = "Delete counter on server for everyone",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                }
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
                         showDeleteConfirmDialog = false
-                        onDelete(counter.id)
+                        onDelete(counter.id, if (counter.canDeleteOnServer) deleteOnServer else false)
                     },
                     colors = ButtonDefaults.textButtonColors(
                         contentColor = MaterialTheme.colorScheme.error
                     )
                 ) {
-                    Text("Delete")
+                    Text("Remove")
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showForgetAdminConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showForgetAdminConfirmDialog = false },
+            title = { Text("Forget Admin Key?") },
+            text = {
+                Text("This will remove admin privileges from this device to prevent accidentally deleting '${counter.title}' on the server. You will retain remaining read or read-write access.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showForgetAdminConfirmDialog = false
+                        onForgetAdminKey(counter.id)
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Forget Key")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showForgetAdminConfirmDialog = false }) {
                     Text("Cancel")
                 }
             }
@@ -405,6 +463,7 @@ fun CounterDetailPane(
                         } else {
                             Switch(
                                 checked = counter.isPublished,
+                                enabled = !counter.isPublished || counter.canUnpublish,
                                 onCheckedChange = { onTogglePublish(counter.id) }
                             )
                         }
@@ -523,6 +582,25 @@ fun CounterDetailPane(
                                     Text("Share")
                                 }
                             }
+
+                            if (counter.canForgetAdminKey) {
+                                OutlinedButton(
+                                    onClick = { showForgetAdminConfirmDialog = true },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = MaterialTheme.colorScheme.error
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Key,
+                                        contentDescription = "Forget Admin Key",
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Forget Admin Key")
+                                }
+                            }
                         }
                     }
                 }
@@ -551,7 +629,8 @@ fun CounterDetailPanePreview() {
             onIncrement = {},
             onDecrement = {},
             onTogglePin = {},
-            onDelete = {},
+            onDelete = { _, _ -> },
+            onForgetAdminKey = {},
             onTogglePublish = {},
             onShowMessage = {}
         )

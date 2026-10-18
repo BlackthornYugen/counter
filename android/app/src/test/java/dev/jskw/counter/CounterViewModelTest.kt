@@ -263,4 +263,70 @@ class CounterViewModelTest {
 
         assertFalse(viewModel.uiState.value.selectedCounter!!.isPublished)
     }
+
+    @Test
+    fun testDeleteCounterKeepOnServer() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.uiState.collect {}
+        }
+
+        viewModel.createCounter(title = "Local Remove", initialCount = 1)
+        advanceUntilIdle()
+
+        val counterId = viewModel.uiState.value.selectedCounterId!!
+        viewModel.togglePublishCounter(counterId)
+        advanceUntilIdle()
+
+        fakeApi.deletedUuid = null
+        viewModel.deleteCounter(counterId, deleteOnServer = false)
+        advanceUntilIdle()
+
+        assertNull(fakeApi.deletedUuid)
+        assertFalse(viewModel.uiState.value.counters.any { it.id == counterId })
+        assertEquals("Counter removed from device", viewModel.uiState.value.userMessage)
+    }
+
+    @Test
+    fun testForgetAdminKeyInViewModel() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.uiState.collect {}
+        }
+
+        viewModel.createCounter(title = "Admin Counter", initialCount = 1)
+        advanceUntilIdle()
+
+        val counterId = viewModel.uiState.value.selectedCounterId!!
+        viewModel.togglePublishCounter(counterId)
+        advanceUntilIdle()
+
+        assertNotNull(viewModel.uiState.value.selectedCounter!!.deleteUuid)
+
+        viewModel.forgetAdminKey(counterId)
+        advanceUntilIdle()
+
+        assertNull(viewModel.uiState.value.selectedCounter!!.deleteUuid)
+        assertEquals("Admin key forgotten", viewModel.uiState.value.userMessage)
+    }
+
+    @Test
+    fun testUnpublishWithoutAdminKeyFailsInViewModel() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.uiState.collect {}
+        }
+
+        val roUuid = "c768f56e-8ff4-4363-8822-79ee8ca6eef4"
+        fakeApi.tokenRolesMap[roUuid] = "read_only"
+
+        viewModel.importCounterFromLink("#RO Counter#read#$roUuid")
+        advanceUntilIdle()
+
+        val counterId = viewModel.uiState.value.selectedCounterId!!
+        assertNull(viewModel.uiState.value.selectedCounter!!.deleteUuid)
+
+        viewModel.togglePublishCounter(counterId)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.selectedCounter!!.isPublished)
+        assertTrue(viewModel.uiState.value.userMessage!!.contains("Failed to unpublish counter"))
+    }
 }

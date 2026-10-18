@@ -151,13 +151,22 @@ class CounterViewModel(
         }
     }
 
-    fun deleteCounter(id: String) {
+    fun deleteCounter(id: String, deleteOnServer: Boolean = true) {
         viewModelScope.launch {
             if (_selectedCounterId.value == id) {
                 _selectedCounterId.value = null
             }
-            repository.deleteCounter(id)
-            _userMessage.value = "Counter deleted"
+            repository.deleteCounter(id, deleteOnServer)
+            _userMessage.value = if (deleteOnServer) "Counter deleted" else "Counter removed from device"
+        }
+    }
+
+    fun forgetAdminKey(id: String) {
+        viewModelScope.launch {
+            val updated = repository.forgetAdminKey(id)
+            if (updated != null) {
+                _userMessage.value = "Admin key forgotten"
+            }
         }
     }
 

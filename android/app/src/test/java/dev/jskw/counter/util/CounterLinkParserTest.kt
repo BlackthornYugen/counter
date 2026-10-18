@@ -2,6 +2,7 @@ package dev.jskw.counter.util
 
 import dev.jskw.counter.data.model.Counter
 import dev.jskw.counter.data.model.canDelete
+import dev.jskw.counter.data.model.canDeleteOnServer
 import dev.jskw.counter.data.model.canIncrementDecrement
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -128,6 +129,7 @@ class CounterLinkParserTest {
         )
         assertTrue(adminCounter.canIncrementDecrement)
         assertTrue(adminCounter.canDelete)
+        assertTrue(adminCounter.canDeleteOnServer)
 
         // Read-Write (no deleteUuid)
         val rwCounter = Counter(
@@ -138,7 +140,8 @@ class CounterLinkParserTest {
             deleteUuid = null
         )
         assertTrue(rwCounter.canIncrementDecrement)
-        assertFalse(rwCounter.canDelete)
+        assertTrue(rwCounter.canDelete)
+        assertFalse(rwCounter.canDeleteOnServer)
 
         // Read-Only (no updateUuid and no deleteUuid)
         val roCounter = Counter(
@@ -149,6 +152,7 @@ class CounterLinkParserTest {
             deleteUuid = null
         )
         assertFalse(roCounter.canIncrementDecrement)
-        assertFalse(roCounter.canDelete)
+        assertTrue(roCounter.canDelete)
+        assertFalse(roCounter.canDeleteOnServer)
     }
 }

@@ -3,6 +3,7 @@ package dev.jskw.counter
 import dev.jskw.counter.data.local.CounterDao
 import dev.jskw.counter.data.model.Counter
 import dev.jskw.counter.data.model.canDelete
+import dev.jskw.counter.data.model.canDeleteOnServer
 import dev.jskw.counter.data.model.canIncrementDecrement
 import dev.jskw.counter.data.remote.CounterApiService
 import dev.jskw.counter.data.remote.CounterInfoResponse
@@ -299,7 +300,7 @@ class CounterRepositoryTest {
 
         // Read-write permission check
         assertTrue(counter.canIncrementDecrement)
-        assertFalse(counter.canDelete)
+        assertFalse(counter.canDeleteOnServer)
     }
 
     @Test
@@ -319,12 +320,119 @@ class CounterRepositoryTest {
         assertNull(counter.updateUuid)
         assertNull(counter.deleteUuid)
 
-        // Read-only permission check: cannot increment/decrement, cannot delete
+        // Read-only permission check: cannot increment/decrement, cannot delete on server
         assertFalse(counter.canIncrementDecrement)
-        assertFalse(counter.canDelete)
+        assertFalse(counter.canDeleteOnServer)
 
         // Attempting increment should not change local count
         val attemptIncrement = repository.incrementCounter(counter.id)
         assertEquals(42, attemptIncrement?.count)
+    }
+
+    @Test
+    fun testDeleteCounterWithoutDeletingOnServer() = runTest {
+        fakeApi.deletedUuid = null
+        val counter = repository.createCounter(title = "Keep On Server", initialCount = 1)
+        val published = repository.publishCounter(counter.id).getOrNull()
+        assertNotNull(published)
+
+        repository.deleteCounter(published!!.id, deleteOnServer = false)
+
+        // Should NOT call server delete
+        assertNull(fakeApi.deletedUuid)
+        // Should be removed locally
+        val deleted = repository.getCounterById(published.id)
+        assertNull(deleted)
+    }
+
+    @Test
+    fun testDeleteReadOnlyCounterWithoutUnpublishing() = runTest {
+        fakeApi.deletedUuid = null
+        val roUuid = "c768f56e-8ff4-4363-8822-79ee8ca6eef4"
+        fakeApi.tokenRolesMap[roUuid] = "read_only"
+
+        val link = "#Shared RO Counter#read#$roUuid"
+        val counter = repository.importCounterFromLink(link).getOrThrow()
+
+        // Read-only counter can be removed locally
+        repository.deleteCounter(counter.id, deleteOnServer = false)
+
+        assertNull(fakeApi.deletedUuid)
+        val deleted = repository.getCounterById(counter.id)
+        assertNull(deleted)
+    }
+
+    @Test
+    fun testUnpublishCounterRequiresAdminToken() = runTest {
+        val roUuid = "c768f56e-8ff4-4363-8822-79ee8ca6eef4"
+        fakeApi.tokenRolesMap[roUuid] = "read_only"
+
+        val link = "#Shared RO Counter#read#$roUuid"
+        val counter = repository.importCounterFromLink(link).getOrThrow()
+
+        val unpublishResult = repository.unpublishCounter(counter.id)
+        assertTrue(unpublishResult.isFailure)
+    }
+
+    @Test
+    fun testForgetAdminKey() = runTest {
+        val counter = repository.createCounter(title = "Admin Counter", initialCount = 5)
+        val published = repository.publishCounter(counter.id).getOrNull()!!
+        assertNotNull(published.deleteUuid)
+
+        val updated = repository.forgetAdminKey(published.id)
+        assertNotNull(updated)
+        assertNull(updated!!.deleteUuid)
+        assertNotNull(updated.viewUuid)
+        assertNotNull(updated.updateUuid)
+        assertFalse(updated.canDeleteOnServer)
+
+        val retrieved = repository.getCounterById(published.id)
+        assertNull(retrieved!!.deleteUuid)
+    }
+
+    @Test
+    fun testImportLinkDuplicatePreventionAndUpsert() = runTest {
+        val roUuid = "c768f56e-8ff4-4363-8822-79ee8ca6eef4"
+        val rwUuid = "e2244bb4-0997-4ef8-8280-9dfbf2ba1022"
+        fakeApi.tokenRolesMap[roUuid] = "read_only"
+        fakeApi.tokenRolesMap[rwUuid] = "read_write"
+
+        // 1st import: read-only link
+        val link1 = "#Initial Title#read#$roUuid"
+        val res1 = repository.importCounterFromLink(link1)
+        assertTrue(res1.isSuccess)
+        val c1 = res1.getOrNull()!!
+        assertEquals("Initial Title", c1.title)
+        assertNull(c1.updateUuid)
+
+        // 2nd import: open link for same counter with new title and read-write key
+        val link2 = "#Updated Title#read#$roUuid#write#$rwUuid"
+        val res2 = repository.importCounterFromLink(link2)
+        assertTrue(res2.isSuccess)
+        val c2 = res2.getOrNull()!!
+
+        // Ensure same counter ID (upsert, not duplicate)
+        assertEquals(c1.id, c2.id)
+        assertEquals("Updated Title", c2.title)
+        assertEquals(roUuid, c2.viewUuid)
+        assertEquals(rwUuid, c2.updateUuid)
+
+        // Check total count in DB is still 1
+        val all = repository.getAllCounters().first()
+        assertEquals(1, all.size)
+    }
+
+    @Test
+    fun testImportLinkRefusesLinkWithoutReadOnlyToken() = runTest {
+        val rwUuid = "e2244bb4-0997-4ef8-8280-9dfbf2ba1022"
+        fakeApi.tokenRolesMap[rwUuid] = "read_write"
+
+        // Link with only read-write token, no read-only token
+        val link = "#RW Only#write#$rwUuid"
+        val res = repository.importCounterFromLink(link)
+
+        assertTrue(res.isFailure)
+        assertTrue(res.exceptionOrNull() is IllegalArgumentException)
     }
 }
