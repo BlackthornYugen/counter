@@ -192,15 +192,43 @@ function disconnectRoom() {
   if (activeBar) activeBar.style.display = "none";
 }
 
+function isValidUuid(token) {
+  if (!token) return false;
+  const cleaned = token.trim().replace(/^[\/#]+/, "").trim();
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return UUID_REGEX.test(cleaned);
+}
+
+function moveRegistrationCardToEnd(moveToEnd) {
+  const cardReg = document.getElementById("card-registration");
+  const dashboardGrid = document.querySelector(".dashboard-grid");
+  const appContainer = document.querySelector(".app-container");
+  if (!cardReg || !dashboardGrid || !appContainer) return;
+
+  if (moveToEnd) {
+    if (cardReg.parentElement !== appContainer || cardReg !== appContainer.lastElementChild) {
+      appContainer.appendChild(cardReg);
+      cardReg.classList.add("moved-to-end");
+      dashboardGrid.classList.add("single-column");
+    }
+  } else {
+    if (cardReg.parentElement !== dashboardGrid || cardReg !== dashboardGrid.firstElementChild) {
+      dashboardGrid.prepend(cardReg);
+      cardReg.classList.remove("moved-to-end");
+      dashboardGrid.classList.remove("single-column");
+    }
+  }
+}
+
 async function connectWithToken(token, updateHash = true) {
   if (!token) {
     showToast("Please enter a room access UUID.", "error");
     return;
   }
   const cleaned = token.trim().replace(/^[\/#]+/, "").trim();
-  const UUIDV4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  if (!UUIDV4_REGEX.test(cleaned)) {
-    showToast("Provided token must be formatted as a valid UUIDv4.", "error");
+  if (!isValidUuid(cleaned)) {
+    showToast("Provided token must be formatted as a valid UUID.", "error");
+    moveRegistrationCardToEnd(false);
     return;
   }
 
@@ -212,9 +240,11 @@ async function connectWithToken(token, updateHash = true) {
     if (!res.ok) {
       updateStatusPill("disconnected", "Invalid UUID");
       showToast(data.detail || "Invalid access UUID or room does not exist.", "error");
+      moveRegistrationCardToEnd(false);
       return;
     }
 
+    moveRegistrationCardToEnd(true);
     activeCounterId = data.counter_id;
     currentRole = data.access;
     activeTokens[currentRole] = cleaned;
@@ -430,6 +460,7 @@ async function deleteCounterRoom() {
     if (window.location.hash) {
       history.replaceState(null, "", window.location.pathname);
     }
+    moveRegistrationCardToEnd(false);
   } catch (err) {
     showToast(`Error deleting room: ${err.message}`, "error");
   }
@@ -757,11 +788,18 @@ document.addEventListener("DOMContentLoaded", () => {
   window.addEventListener("hashchange", () => {
     const hashToken = getHashToken();
     if (hashToken) {
+      if (isValidUuid(hashToken)) {
+        moveRegistrationCardToEnd(true);
+      } else {
+        moveRegistrationCardToEnd(false);
+      }
       const activeToken = activeTokens[currentRole];
       if (hashToken !== activeToken) {
         document.getElementById("input-connect-uuid").value = hashToken;
         connectWithToken(hashToken, false);
       }
+    } else {
+      moveRegistrationCardToEnd(false);
     }
   });
 
@@ -773,7 +811,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Check if URL has hashtag #<uuid> on initial load
   const initialHash = getHashToken();
-  if (initialHash) {
+  if (initialHash && isValidUuid(initialHash)) {
+    moveRegistrationCardToEnd(true);
+    document.getElementById("input-connect-uuid").value = initialHash;
+    connectWithToken(initialHash, false);
+  } else if (initialHash) {
     document.getElementById("input-connect-uuid").value = initialHash;
     connectWithToken(initialHash, false);
   } else {
