@@ -109,6 +109,24 @@ class CounterViewModel(
         }
     }
 
+    fun importCounterFromLink(link: String) {
+        viewModelScope.launch {
+            val trimmed = link.trim()
+            if (trimmed.isEmpty()) {
+                _userMessage.value = "Link cannot be empty"
+                return@launch
+            }
+            val result = repository.importCounterFromLink(trimmed)
+            result.onSuccess { counter ->
+                _selectedCounterId.value = counter.id
+                _showAddDialog.value = false
+                _userMessage.value = "Imported '${counter.title}'"
+            }.onFailure { e ->
+                _userMessage.value = "Failed to import link: ${e.message}"
+            }
+        }
+    }
+
     fun incrementCounter(id: String) {
         viewModelScope.launch {
             repository.incrementCounter(id)

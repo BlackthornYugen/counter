@@ -2,10 +2,12 @@ package dev.jskw.counter
 
 import dev.jskw.counter.data.local.CounterDao
 import dev.jskw.counter.data.model.Counter
+import dev.jskw.counter.data.model.canDelete
+import dev.jskw.counter.data.model.canIncrementDecrement
 import dev.jskw.counter.data.remote.CounterApiService
-import dev.jskw.counter.data.remote.RegisterResponse
 import dev.jskw.counter.data.remote.CounterInfoResponse
 import dev.jskw.counter.data.remote.LiveUpdate
+import dev.jskw.counter.data.remote.RegisterResponse
 import dev.jskw.counter.data.repository.CounterRepositoryImpl
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,6 +16,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -82,6 +85,8 @@ class FakeCounterApiService : CounterApiService {
     var lastUpdatedCount: Int? = null
     var deletedUuid: String? = null
 
+    val tokenRolesMap = mutableMapOf<String, String>()
+
     override suspend fun publishCounter(
         initialCount: Int,
         readOnlyUuid: String?,
@@ -91,6 +96,11 @@ class FakeCounterApiService : CounterApiService {
         publishedViewUuid = readOnlyUuid ?: java.util.UUID.randomUUID().toString()
         publishedManagementUuid = readWriteUuid ?: java.util.UUID.randomUUID().toString()
         val resolvedAdmin = adminUuid ?: java.util.UUID.randomUUID().toString()
+
+        tokenRolesMap[publishedViewUuid!!] = "read_only"
+        tokenRolesMap[publishedManagementUuid!!] = "read_write"
+        tokenRolesMap[resolvedAdmin] = "admin"
+
         return Result.success(
             RegisterResponse(
                 counter_id = "test",
@@ -115,10 +125,15 @@ class FakeCounterApiService : CounterApiService {
     }
 
     override suspend fun fetchLiveCount(token: String): Result<CounterInfoResponse> {
-        return Result.success(CounterInfoResponse(counter_id = "test", value = 42, access = "admin"))
+        val access = tokenRolesMap[token] ?: when {
+            token.contains("ro") -> "read_only"
+            token.contains("rw") -> "read_write"
+            else -> "admin"
+        }
+        return Result.success(CounterInfoResponse(counter_id = "test", value = 42, access = access))
     }
 
-    override fun observeLiveCount(token: String): kotlinx.coroutines.flow.Flow<Result<LiveUpdate>> = kotlinx.coroutines.flow.flow {
+    override fun observeLiveCount(token: String): Flow<Result<LiveUpdate>> = kotlinx.coroutines.flow.flow {
         emit(Result.success(LiveUpdate(value = 42)))
     }
 }
@@ -261,5 +276,55 @@ class CounterRepositoryTest {
         assertEquals(originalViewUuid, republished.viewUuid)
         assertEquals(originalUpdateUuid, republished.updateUuid)
         assertEquals(originalDeleteUuid, republished.deleteUuid)
+    }
+
+    @Test
+    fun testImportCounterFromReadWriteLink() = runTest {
+        val roUuid = "c768f56e-8ff4-4363-8822-79ee8ca6eef4"
+        val rwUuid = "e2244bb4-0997-4ef8-8280-9dfbf2ba1022"
+        fakeApi.tokenRolesMap[roUuid] = "read_only"
+        fakeApi.tokenRolesMap[rwUuid] = "read_write"
+
+        val link = "#Shared RW Counter#read#$roUuid#write#$rwUuid"
+        val result = repository.importCounterFromLink(link)
+
+        assertTrue(result.isSuccess)
+        val counter = result.getOrNull()!!
+        assertEquals("Shared RW Counter", counter.title)
+        assertEquals(42, counter.count)
+        assertTrue(counter.isPublished)
+        assertEquals(roUuid, counter.viewUuid)
+        assertEquals(rwUuid, counter.updateUuid)
+        assertNull(counter.deleteUuid)
+
+        // Read-write permission check
+        assertTrue(counter.canIncrementDecrement)
+        assertFalse(counter.canDelete)
+    }
+
+    @Test
+    fun testImportCounterFromReadOnlyLink() = runTest {
+        val roUuid = "c768f56e-8ff4-4363-8822-79ee8ca6eef4"
+        fakeApi.tokenRolesMap[roUuid] = "read_only"
+
+        val link = "#Shared RO Counter#read#$roUuid"
+        val result = repository.importCounterFromLink(link)
+
+        assertTrue(result.isSuccess)
+        val counter = result.getOrNull()!!
+        assertEquals("Shared RO Counter", counter.title)
+        assertEquals(42, counter.count)
+        assertTrue(counter.isPublished)
+        assertEquals(roUuid, counter.viewUuid)
+        assertNull(counter.updateUuid)
+        assertNull(counter.deleteUuid)
+
+        // Read-only permission check: cannot increment/decrement, cannot delete
+        assertFalse(counter.canIncrementDecrement)
+        assertFalse(counter.canDelete)
+
+        // Attempting increment should not change local count
+        val attemptIncrement = repository.incrementCounter(counter.id)
+        assertEquals(42, attemptIncrement?.count)
     }
 }

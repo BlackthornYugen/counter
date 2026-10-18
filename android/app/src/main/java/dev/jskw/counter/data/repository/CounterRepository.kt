@@ -18,4 +18,5 @@ interface CounterRepository {
     suspend fun unpublishCounter(id: String): Result<Counter>
     suspend fun syncRemoteCount(id: String): Result<Counter>
     fun observeRemoteCount(id: String): Flow<Result<Counter>>
+    suspend fun importCounterFromLink(link: String): Result<Counter>
 }

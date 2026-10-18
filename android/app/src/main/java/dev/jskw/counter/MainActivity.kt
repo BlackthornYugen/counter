@@ -1,5 +1,6 @@
 package dev.jskw.counter
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -19,10 +20,24 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        handleDeepLinkIntent(intent)
         setContent {
             CounterTheme {
                 CounterApp(viewModel = viewModel)
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleDeepLinkIntent(intent)
+    }
+
+    private fun handleDeepLinkIntent(intent: Intent?) {
+        val dataString = intent?.dataString
+        if (!dataString.isNullOrBlank()) {
+            viewModel.importCounterFromLink(dataString)
         }
     }
 }

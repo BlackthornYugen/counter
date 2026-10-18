@@ -3,9 +3,14 @@ package dev.jskw.counter.data.repository
 import android.content.Context
 import dev.jskw.counter.data.local.CounterDao
 import dev.jskw.counter.data.model.Counter
+import dev.jskw.counter.data.model.canIncrementDecrement
+import dev.jskw.counter.data.model.effectiveAdminToken
+import dev.jskw.counter.data.model.effectiveReadToken
+import dev.jskw.counter.data.model.effectiveWriteToken
 import dev.jskw.counter.data.remote.CounterApiService
 import dev.jskw.counter.sync.WearSyncUtils
 import dev.jskw.counter.util.AppLog
+import dev.jskw.counter.util.CounterLinkParser
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
@@ -54,13 +59,18 @@ class CounterRepositoryImpl(
 
     override suspend fun incrementCounter(id: String): Counter? {
         val current = counterDao.getCounterById(id) ?: return null
+        if (!current.canIncrementDecrement) {
+            AppLog.w(TAG, "incrementCounter: counter id=$id is read-only")
+            return current
+        }
         val updated = current.copy(count = current.count + 1)
         counterDao.updateCounter(updated)
         AppLog.d(TAG, "incrementCounter: id=$id local count updated to ${updated.count}")
         pushAllToWear()
-        if (current.isPublished && current.updateUuid != null) {
-            AppLog.d(TAG, "incrementCounter: dispatching remote increment for token=${current.updateUuid}")
-            val remoteResult = apiService.incrementCounter(current.updateUuid)
+        val writeToken = current.effectiveWriteToken
+        if (current.isPublished && writeToken != null) {
+            AppLog.d(TAG, "incrementCounter: dispatching remote increment for token=$writeToken")
+            val remoteResult = apiService.incrementCounter(writeToken)
             remoteResult.onFailure { e ->
                 AppLog.e(TAG, "incrementCounter remote sync failed: ${e.message}", e)
             }
@@ -70,14 +80,19 @@ class CounterRepositoryImpl(
 
     override suspend fun decrementCounter(id: String): Counter? {
         val current = counterDao.getCounterById(id) ?: return null
+        if (!current.canIncrementDecrement) {
+            AppLog.w(TAG, "decrementCounter: counter id=$id is read-only")
+            return current
+        }
         if (current.count <= 0) return current
         val updated = current.copy(count = current.count - 1)
         counterDao.updateCounter(updated)
         AppLog.d(TAG, "decrementCounter: id=$id local count updated to ${updated.count}")
         pushAllToWear()
-        if (current.isPublished && current.updateUuid != null) {
-            AppLog.d(TAG, "decrementCounter: dispatching remote decrement for token=${current.updateUuid}")
-            val remoteResult = apiService.decrementCounter(current.updateUuid)
+        val writeToken = current.effectiveWriteToken
+        if (current.isPublished && writeToken != null) {
+            AppLog.d(TAG, "decrementCounter: dispatching remote decrement for token=$writeToken")
+            val remoteResult = apiService.decrementCounter(writeToken)
             remoteResult.onFailure { e ->
                 AppLog.e(TAG, "decrementCounter remote sync failed: ${e.message}", e)
             }
@@ -104,9 +119,10 @@ class CounterRepositoryImpl(
 
     override suspend fun deleteCounter(id: String) {
         val current = counterDao.getCounterById(id)
-        AppLog.d(TAG, "deleteCounter: deleting id=$id, isPublished=${current?.isPublished}, deleteUuid=${current?.deleteUuid}")
-        if (current != null && current.isPublished && current.deleteUuid != null) {
-            val remoteResult = apiService.deleteCounter(current.deleteUuid)
+        val adminToken = current?.effectiveAdminToken
+        AppLog.d(TAG, "deleteCounter: deleting id=$id, isPublished=${current?.isPublished}, adminToken=$adminToken")
+        if (current != null && current.isPublished && adminToken != null) {
+            val remoteResult = apiService.deleteCounter(adminToken)
             remoteResult.onFailure { e ->
                 AppLog.w(TAG, "deleteCounter: remote delete failed: ${e.message}", e)
             }
@@ -126,8 +142,6 @@ class CounterRepositoryImpl(
 
         AppLog.d(TAG, "publishCounter: publishing counter id=$id title='${current.title}' count=${current.count}")
 
-        // For new publishing, null UUIDs cause the server to generate fresh tokens.
-        // For republishing, pass the existing UUIDs previously obtained from the server so the share link is preserved.
         val apiResult = apiService.publishCounter(
             initialCount = current.count,
             readOnlyUuid = current.viewUuid,
@@ -136,10 +150,10 @@ class CounterRepositoryImpl(
         )
 
         val response = apiResult.getOrElse { e ->
-            // If the room was already registered on the server (e.g. remote delete was skipped or failed on unpublish)
-            if (current.viewUuid != null && e.message?.contains("409") == true) {
-                AppLog.w(TAG, "publishCounter: room already registered (409). Checking if accessible via viewUuid=${current.viewUuid}")
-                val liveCheck = apiService.fetchLiveCount(current.viewUuid)
+            val readToken = current.effectiveReadToken
+            if (readToken != null && e.message?.contains("409") == true) {
+                AppLog.w(TAG, "publishCounter: room already registered (409). Checking if accessible via token=$readToken")
+                val liveCheck = apiService.fetchLiveCount(readToken)
                 if (liveCheck.isSuccess) {
                     AppLog.i(TAG, "publishCounter: existing counter room is valid and accessible, restoring published state")
                     val republishedCounter = current.copy(isPublished = true)
@@ -177,9 +191,10 @@ class CounterRepositoryImpl(
         val current = counterDao.getCounterById(id)
             ?: return Result.failure(IllegalArgumentException("Counter with id $id not found"))
 
-        AppLog.d(TAG, "unpublishCounter: unpublishing id=$id, deleteUuid=${current.deleteUuid}")
-        if (current.deleteUuid != null) {
-            val delResult = apiService.deleteCounter(current.deleteUuid)
+        val adminToken = current.effectiveAdminToken
+        AppLog.d(TAG, "unpublishCounter: unpublishing id=$id, adminToken=$adminToken")
+        if (adminToken != null) {
+            val delResult = apiService.deleteCounter(adminToken)
             delResult.onFailure { e ->
                 AppLog.w(TAG, "unpublishCounter: remote delete returned error: ${e.message}", e)
             }
@@ -195,11 +210,12 @@ class CounterRepositoryImpl(
     override suspend fun syncRemoteCount(id: String): Result<Counter> {
         val current = counterDao.getCounterById(id)
             ?: return Result.failure(IllegalArgumentException("Counter with id $id not found"))
-        if (!current.isPublished || current.viewUuid == null) {
-            return Result.failure(IllegalStateException("Counter is not published"))
+        val readToken = current.effectiveReadToken
+        if (!current.isPublished || readToken == null) {
+            return Result.failure(IllegalStateException("Counter is not published or has no valid access token"))
         }
-        AppLog.d(TAG, "syncRemoteCount: fetching live count for id=$id, viewUuid=${current.viewUuid}")
-        return apiService.fetchLiveCount(current.viewUuid).mapCatching { remoteState ->
+        AppLog.d(TAG, "syncRemoteCount: fetching live count for id=$id, token=$readToken")
+        return apiService.fetchLiveCount(readToken).mapCatching { remoteState ->
             val updated = current.copy(count = remoteState.value)
             counterDao.updateCounter(updated)
             AppLog.d(TAG, "syncRemoteCount: updated id=$id count to ${remoteState.value}")
@@ -212,12 +228,13 @@ class CounterRepositoryImpl(
     override fun observeRemoteCount(id: String): Flow<Result<Counter>> = kotlinx.coroutines.flow.flow {
         val current = counterDao.getCounterById(id)
             ?: throw IllegalArgumentException("Counter with id $id not found")
-        if (!current.isPublished || current.viewUuid == null) {
-            throw IllegalStateException("Counter is not published")
+        val readToken = current.effectiveReadToken
+        if (!current.isPublished || readToken == null) {
+            throw IllegalStateException("Counter is not published or has no valid access token")
         }
 
-        AppLog.d(TAG, "observeRemoteCount: listening on viewUuid=${current.viewUuid} for counter id=$id")
-        apiService.observeLiveCount(current.viewUuid).collect { result ->
+        AppLog.d(TAG, "observeRemoteCount: listening on token=$readToken for counter id=$id")
+        apiService.observeLiveCount(readToken).collect { result ->
             result.onSuccess { remoteState ->
                 val updated = counterDao.getCounterById(id) ?: return@onSuccess
                 val nextCounter = updated.copy(count = remoteState.value)
@@ -229,6 +246,77 @@ class CounterRepositoryImpl(
                 AppLog.e(TAG, "observeRemoteCount: stream error for id=$id: ${err.message}", err)
                 emit(Result.failure(err))
             }
+        }
+    }
+
+    override suspend fun importCounterFromLink(link: String): Result<Counter> {
+        val parsed = CounterLinkParser.parse(link)
+        if (parsed.uuids.isEmpty()) {
+            return Result.failure(IllegalArgumentException("No valid UUID tokens found in link"))
+        }
+
+        var resolvedReadOnlyUuid: String? = null
+        var resolvedReadWriteUuid: String? = null
+        var resolvedAdminUuid: String? = null
+        var resolvedCounterId: String? = null
+        var latestValue = 0
+
+        for (uuid in parsed.uuids) {
+            val result = apiService.fetchLiveCount(uuid)
+            result.onSuccess { info ->
+                resolvedCounterId = info.counter_id
+                latestValue = info.value
+                when (info.access) {
+                    "read_only" -> resolvedReadOnlyUuid = uuid
+                    "read_write" -> resolvedReadWriteUuid = uuid
+                    "admin" -> resolvedAdminUuid = uuid
+                }
+            }.onFailure { e ->
+                AppLog.w(TAG, "importCounterFromLink: failed to query token $uuid: ${e.message}")
+            }
+        }
+
+        if (resolvedCounterId == null) {
+            return Result.failure(IllegalStateException("Could not resolve any token on server"))
+        }
+
+        val title = parsed.label?.takeIf { it.isNotBlank() }
+            ?: "Counter ${resolvedCounterId.take(8)}"
+
+        val existingCounters = counterDao.getAllCounters().firstOrNull() ?: emptyList()
+        val existing = existingCounters.find {
+            (resolvedReadOnlyUuid != null && it.viewUuid == resolvedReadOnlyUuid) ||
+            (resolvedReadWriteUuid != null && it.updateUuid == resolvedReadWriteUuid) ||
+            (resolvedAdminUuid != null && it.deleteUuid == resolvedAdminUuid)
+        }
+
+        if (existing != null) {
+            val updated = existing.copy(
+                title = parsed.label?.takeIf { it.isNotBlank() } ?: existing.title,
+                count = latestValue,
+                isPublished = true,
+                viewUuid = resolvedReadOnlyUuid ?: existing.viewUuid,
+                updateUuid = resolvedReadWriteUuid ?: existing.updateUuid,
+                deleteUuid = resolvedAdminUuid ?: existing.deleteUuid
+            )
+            counterDao.updateCounter(updated)
+            pushAllToWear()
+            AppLog.i(TAG, "importCounterFromLink: updated existing counter id=${updated.id}")
+            return Result.success(updated)
+        } else {
+            val newCounter = Counter(
+                id = UUID.randomUUID().toString(),
+                title = title,
+                count = latestValue,
+                isPublished = true,
+                viewUuid = resolvedReadOnlyUuid,
+                updateUuid = resolvedReadWriteUuid,
+                deleteUuid = resolvedAdminUuid
+            )
+            counterDao.insertCounter(newCounter)
+            pushAllToWear()
+            AppLog.i(TAG, "importCounterFromLink: created new counter id=${newCounter.id}, title='$title', count=$latestValue")
+            return Result.success(newCounter)
         }
     }
 

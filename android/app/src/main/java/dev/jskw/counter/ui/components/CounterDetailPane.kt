@@ -15,6 +15,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -45,6 +47,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -73,9 +77,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.jskw.counter.BuildConfig
 import dev.jskw.counter.data.model.Counter
+import dev.jskw.counter.data.model.availableShareRoles
+import dev.jskw.counter.data.model.canDelete
+import dev.jskw.counter.data.model.canIncrementDecrement
+import dev.jskw.counter.data.model.effectiveReadToken
 import dev.jskw.counter.ui.theme.CounterTheme
+import dev.jskw.counter.util.CounterLinkParser
+import dev.jskw.counter.util.ShareRole
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun CounterDetailPane(
     counter: Counter?,
@@ -181,14 +191,16 @@ fun CounterDetailPane(
                             tint = if (counter.isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                         )
                     }
-                    IconButton(
-                        onClick = { showDeleteConfirmDialog = true }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Delete,
-                            contentDescription = "Delete Counter",
-                            tint = MaterialTheme.colorScheme.error
-                        )
+                    if (counter.canDelete) {
+                        IconButton(
+                            onClick = { showDeleteConfirmDialog = true }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Delete,
+                                contentDescription = "Delete Counter",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -241,88 +253,92 @@ fun CounterDetailPane(
                 }
             }
 
-            // Large + and - Control Buttons
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Decrement Button (-)
-                Button(
-                    onClick = { if (counter.count > 0) onDecrement(counter.id) },
-                    enabled = counter.count > 0,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(80.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
+            // Large + and - Control Buttons (shown only if role permits editing)
+            if (counter.canIncrementDecrement) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    // Decrement Button (-)
+                    Button(
+                        onClick = { if (counter.count > 0) onDecrement(counter.id) },
+                        enabled = counter.count > 0,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(80.dp),
+                        shape = RoundedCornerShape(24.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
                     ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Remove,
-                            contentDescription = "Minus",
-                            modifier = Modifier.size(36.dp)
-                        )
-                        Text(
-                            text = "- 1",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Remove,
+                                contentDescription = "Minus",
+                                modifier = Modifier.size(36.dp)
+                            )
+                            Text(
+                                text = "- 1",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
-                }
 
-                // Increment Button (+)
-                Button(
-                    onClick = { onIncrement(counter.id) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(80.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
-                    )
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    // Increment Button (+)
+                    Button(
+                        onClick = { onIncrement(counter.id) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(80.dp),
+                        shape = RoundedCornerShape(24.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        )
                     ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Add,
-                            contentDescription = "Plus",
-                            modifier = Modifier.size(36.dp)
-                        )
-                        Text(
-                            text = "+ 1",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Add,
+                                contentDescription = "Plus",
+                                modifier = Modifier.size(36.dp)
+                            )
+                            Text(
+                                text = "+ 1",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
 
-            // Delete Action Button
-            OutlinedButton(
-                onClick = { showDeleteConfirmDialog = true },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = MaterialTheme.colorScheme.error
-                )
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Delete,
-                    contentDescription = "Delete",
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Delete Counter")
+            // Delete Action Button (shown only if role permits deleting)
+            if (counter.canDelete) {
+                OutlinedButton(
+                    onClick = { showDeleteConfirmDialog = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Delete,
+                        contentDescription = "Delete",
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Delete Counter")
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -395,15 +411,52 @@ fun CounterDetailPane(
                     }
 
                     AnimatedVisibility(
-                        visible = counter.isPublished && counter.viewUuid != null,
+                        visible = counter.isPublished && counter.effectiveReadToken != null,
                         enter = fadeIn() + scaleIn(animationSpec = spring(stiffness = Spring.StiffnessMedium)),
                         exit = fadeOut() + scaleOut()
                     ) {
-                        val shareUrl = "${BuildConfig.API_BASE_URL}/#${counter.viewUuid}"
+                        val availableRoles = counter.availableShareRoles
+                        var selectedRole by remember(counter.id) { mutableStateOf(availableRoles.first()) }
+
+                        val shareUrl = CounterLinkParser.buildShareUrl(
+                            baseUrl = BuildConfig.API_BASE_URL,
+                            counter = counter,
+                            role = selectedRole
+                        )
 
                         Column(
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
+                            if (availableRoles.size > 1) {
+                                Text(
+                                    text = "Share Access Level:",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    availableRoles.forEach { role ->
+                                        val label = when (role) {
+                                            ShareRole.ADMIN -> "Full (Admin)"
+                                            ShareRole.READ_WRITE -> "Read-Write"
+                                            ShareRole.READ_ONLY -> "Read-Only"
+                                        }
+                                        FilterChip(
+                                            selected = selectedRole == role,
+                                            onClick = { selectedRole = role },
+                                            label = { Text(label) },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -487,7 +540,9 @@ fun CounterDetailPanePreview() {
         count = 42,
         isPinned = true,
         isPublished = true,
-        viewUuid = "view-12345"
+        viewUuid = "view-12345",
+        updateUuid = "update-12345",
+        deleteUuid = "delete-12345"
     )
     CounterTheme {
         CounterDetailPane(

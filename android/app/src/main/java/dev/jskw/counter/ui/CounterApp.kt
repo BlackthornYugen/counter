@@ -76,6 +76,17 @@ fun CounterApp(
         PinnedCounterNotifier.updateNotification(context, pinnedCounters)
     }
 
+    // Automatically navigate to selected counter detail and purge previous detail backstack entries
+    LaunchedEffect(uiState.selectedCounterId) {
+        val targetId = uiState.selectedCounterId
+        if (targetId != null) {
+            while (navigator.canNavigateBack()) {
+                navigator.navigateBack()
+            }
+            navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, targetId)
+        }
+    }
+
     // Check status and sync published counters when user opens or resumes the app
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         viewModel.syncPublishedCounters()
@@ -126,9 +137,6 @@ fun CounterApp(
                     selectedCounterId = uiState.selectedCounterId,
                     onSelectCounter = { counterId ->
                         viewModel.selectCounter(counterId)
-                        scope.launch {
-                            navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, counterId)
-                        }
                     },
                     onTogglePin = { counterId ->
                         handleTogglePin(counterId)
@@ -177,13 +185,9 @@ fun CounterApp(
             onDismiss = { viewModel.showAddDialog(false) },
             onCreateCounter = { title, initialCount ->
                 viewModel.createCounter(title, initialCount)
-                // New counter is selected automatically in viewModel.createCounter
-                scope.launch {
-                    val newCounterId = viewModel.uiState.value.selectedCounterId
-                    if (newCounterId != null) {
-                        navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, newCounterId)
-                    }
-                }
+            },
+            onImportCounter = { link ->
+                viewModel.importCounterFromLink(link)
             }
         )
     }
