@@ -192,9 +192,14 @@ def render_diff_page(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Compare Privacy Policies ({date1} vs {date2}) — JSKW Counter</title>
   <meta name="description" content="Side-by-side git diff comparison of JSKW Counter privacy policies between {date1} and {date2}.">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/node_modules/@fontsource/outfit/400.css">
+  <link rel="stylesheet" href="/static/node_modules/@fontsource/outfit/500.css">
+  <link rel="stylesheet" href="/static/node_modules/@fontsource/outfit/600.css">
+  <link rel="stylesheet" href="/static/node_modules/@fontsource/outfit/700.css">
+  <link rel="stylesheet" href="/static/node_modules/@fontsource/outfit/800.css">
+  <link rel="stylesheet" href="/static/node_modules/@fontsource/jetbrains-mono/400.css">
+  <link rel="stylesheet" href="/static/node_modules/@fontsource/jetbrains-mono/600.css">
+  <link rel="stylesheet" href="/static/node_modules/@fontsource/jetbrains-mono/700.css">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
