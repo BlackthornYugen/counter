@@ -582,6 +582,33 @@ body {
   transition: color 0.15s ease;
 }
 
+.role-card-qr.blurred {
+  filter: blur(6px);
+  opacity: 0.85;
+}
+
+.btn-role-toggle {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-family: var(--font-family);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-role-toggle:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  border-color: var(--border-hover);
+}
+
 .role-link-card:hover .role-card-copy-hint {
   color: var(--text-muted);
 }

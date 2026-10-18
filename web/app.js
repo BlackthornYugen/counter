@@ -425,6 +425,7 @@ function renderRoleCards(tokens, counterId = null) {
   if (!roleCardsContainer) return;
   roleCardsContainer.innerHTML = "";
 
+  const DUMMY_QR_URL = "http://counter.jskw.dev";
   const possibleRoles = ["admin", "read_write", "read_only"];
   for (const role of possibleRoles) {
     const token = tokens[role];
@@ -434,6 +435,9 @@ function renderRoleCards(tokens, counterId = null) {
     const desc = role === "admin" ? "Full Control" : (role === "read_write" ? "Write & Read" : "View Only");
     const shareHash = buildShareHash(role, tokens, currentCounterLabel);
     const shareUrl = `${window.location.origin}${window.location.pathname}${shareHash}`;
+
+    // Admin and read-write are hidden by default; read-only is visible by default
+    let isHidden = (role === "admin" || role === "read_write");
 
     const card = document.createElement("div");
     card.className = `role-link-card card-role-${role}`;
@@ -448,38 +452,81 @@ function renderRoleCards(tokens, counterId = null) {
 
     card.innerHTML = `
       <div class="role-card-top">
-        <span class="role-card-badge">${icon} ${title}</span>
-        <span class="label-role-tag tag-${role === 'admin' ? 'admin' : (role === 'read_write' ? 'rw' : 'ro')}">${desc}</span>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="role-card-badge">${icon} ${title}</span>
+          <span class="label-role-tag tag-${role === 'admin' ? 'admin' : (role === 'read_write' ? 'rw' : 'ro')}">${desc}</span>
+        </div>
+        <button type="button" class="btn-role-toggle" id="toggle-${role}" title="${isHidden ? 'Reveal QR Code' : 'Hide QR Code'}">
+          ${isHidden ? '👁️ Reveal' : '🔒 Hide'}
+        </button>
       </div>
       <div class="role-card-qr-wrap">
-        <div class="role-card-qr" id="qr-${role}" title="Click to copy ${title} link" role="button" tabindex="0"></div>
+        <div class="role-card-qr ${isHidden ? 'blurred' : ''}" id="qr-${role}" title="${isHidden ? 'Click to reveal' : 'Click to copy ' + title + ' link'}" role="button" tabindex="0"></div>
       </div>
-      <div class="role-card-copy-hint">📋 Click QR to copy link</div>
+      <div class="role-card-copy-hint" id="hint-${role}">${isHidden ? '🔒 Hidden (Click to reveal)' : '📋 Click QR to copy link'}</div>
     `;
     roleCardsContainer.appendChild(card);
 
-    // Generate larger QR code with Level L for maximum module size and easy camera scanning
     const qrContainer = card.querySelector(`#qr-${role}`);
-    new QRCode(qrContainer, {
-      text: shareUrl,
-      width: 180,
-      height: 180,
-      colorDark: colors.dark,
-      colorLight: colors.light,
-      correctLevel: QRCode.CorrectLevel.L,
-    });
+    const toggleBtn = card.querySelector(`#toggle-${role}`);
+    const hintEl = card.querySelector(`#hint-${role}`);
 
-    // Make the QR code clickable to copy
-    qrContainer.style.cursor = "pointer";
-    const copyHandler = (e) => {
+    function drawQr(forUrl) {
+      qrContainer.innerHTML = "";
+      new QRCode(qrContainer, {
+        text: forUrl,
+        width: 180,
+        height: 180,
+        colorDark: colors.dark,
+        colorLight: colors.light,
+        correctLevel: QRCode.CorrectLevel.L,
+      });
+    }
+
+    // Initial draw: dummy URL if hidden, real URL if visible
+    drawQr(isHidden ? DUMMY_QR_URL : shareUrl);
+
+    function setHidden(hidden, notify = true) {
+      isHidden = hidden;
+      if (isHidden) {
+        drawQr(DUMMY_QR_URL);
+        qrContainer.classList.add("blurred");
+        qrContainer.title = "Click to reveal";
+        toggleBtn.innerHTML = "👁️ Reveal";
+        toggleBtn.title = "Reveal QR Code";
+        hintEl.textContent = "🔒 Hidden (Click to reveal)";
+        if (notify) showToast(`${title} QR code hidden.`, "info");
+      } else {
+        drawQr(shareUrl);
+        qrContainer.classList.remove("blurred");
+        qrContainer.title = `Click to copy ${title} link`;
+        toggleBtn.innerHTML = "🔒 Hide";
+        toggleBtn.title = "Hide QR Code";
+        hintEl.textContent = "📋 Click QR to copy link";
+        if (notify) showToast(`${title} QR code revealed.`, "info");
+      }
+    }
+
+    toggleBtn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      navigator.clipboard.writeText(shareUrl);
-      showToast(`${title} link copied to clipboard!`, "success");
+      setHidden(!isHidden, true);
+    });
+
+    const qrClickHandler = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (isHidden) {
+        setHidden(false, true);
+      } else {
+        navigator.clipboard.writeText(shareUrl);
+        showToast(`${title} link copied to clipboard!`, "success");
+      }
     };
-    qrContainer.addEventListener("click", copyHandler);
+
+    qrContainer.addEventListener("click", qrClickHandler);
     qrContainer.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") copyHandler(e);
+      if (e.key === "Enter" || e.key === " ") qrClickHandler(e);
     });
   }
 }
