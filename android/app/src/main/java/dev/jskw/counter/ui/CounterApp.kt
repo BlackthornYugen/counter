@@ -126,6 +126,14 @@ fun CounterApp(
                 val selectedCounter = uiState.selectedCounter
                 val isSyncing = selectedCounter?.let { uiState.syncingCounterIds.contains(it.id) } ?: false
 
+                LaunchedEffect(selectedCounter?.id) {
+                    if (selectedCounter != null && selectedCounter.isPublished) {
+                        viewModel.observeRemoteCount(selectedCounter.id)
+                    } else {
+                        viewModel.stopObservingRemoteCount()
+                    }
+                }
+
                 CounterDetailPane(
                     counter = selectedCounter,
                     isSyncing = isSyncing,

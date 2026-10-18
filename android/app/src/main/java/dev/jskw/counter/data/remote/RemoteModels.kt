@@ -3,35 +3,34 @@ package dev.jskw.counter.data.remote
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class PublishCounterRequest(
-    val title: String,
-    val count: Int,
-    val viewUuid: String,
-    val updateUuid: String,
-    val deleteUuid: String
+data class RegisterRequest(
+    val initial_value: Int = 0,
+    val read_only_uuid: String? = null,
+    val read_write_uuid: String? = null,
+    val admin_uuid: String? = null
 )
 
 @Serializable
-data class UpdateCounterRequest(
-    val count: Int,
-    val title: String? = null,
-    val updateUuid: String? = null
+data class RegisterResponse(
+    val counter_id: String,
+    val value: Int,
+    val roles: Map<String, String>,
+    val message: String
 )
 
 @Serializable
-data class PublishCounterResponse(
-    val success: Boolean = true,
-    val viewUuid: String? = null,
-    val updateUuid: String? = null,
-    val deleteUuid: String? = null,
-    val count: Int? = null,
-    val message: String? = null
+data class ActionRequest(
+    val delta: Int = 1
 )
 
 @Serializable
-data class RemoteCounterState(
-    val viewUuid: String? = null,
-    val updateUuid: String? = null,
-    val title: String? = null,
-    val count: Int? = 0
+data class CounterInfoResponse(
+    val counter_id: String,
+    val value: Int,
+    val access: String
+)
+
+@Serializable
+data class SseUpdate(
+    val value: Int
 )

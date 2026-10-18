@@ -1,21 +1,20 @@
 package dev.jskw.counter.data.remote
 
-import dev.jskw.counter.data.model.Counter
-
 interface CounterApiService {
     suspend fun publishCounter(
-        counter: Counter,
-        viewUuid: String,
-        managementUuid: String
-    ): Result<PublishCounterResponse>
+        initialCount: Int,
+        readOnlyUuid: String? = null,
+        readWriteUuid: String? = null,
+        adminUuid: String? = null
+    ): Result<RegisterResponse>
 
-    suspend fun updateCounter(
-        updateUuid: String,
-        count: Int,
-        title: String? = null
-    ): Result<Boolean>
+    suspend fun incrementCounter(token: String): Result<Boolean>
+    
+    suspend fun decrementCounter(token: String): Result<Boolean>
 
-    suspend fun deleteCounter(deleteUuid: String): Result<Boolean>
+    suspend fun deleteCounter(token: String): Result<Boolean>
 
-    suspend fun fetchLiveCount(viewUuid: String): Result<RemoteCounterState>
+    suspend fun fetchLiveCount(token: String): Result<CounterInfoResponse>
+
+    fun observeLiveCount(token: String): kotlinx.coroutines.flow.Flow<Result<SseUpdate>>
 }

@@ -41,7 +41,9 @@ class CounterRepositoryImpl(
         val current = counterDao.getCounterById(id) ?: return null
         val updated = current.copy(count = current.count + 1)
         counterDao.updateCounter(updated)
-        syncIfPublished(updated)
+        if (current.isPublished && current.updateUuid != null) {
+            runCatching { apiService.incrementCounter(current.updateUuid) }
+        }
         return updated
     }
 
@@ -49,7 +51,9 @@ class CounterRepositoryImpl(
         val current = counterDao.getCounterById(id) ?: return null
         val updated = current.copy(count = current.count - 1)
         counterDao.updateCounter(updated)
-        syncIfPublished(updated)
+        if (current.isPublished && current.updateUuid != null) {
+            runCatching { apiService.decrementCounter(current.updateUuid) }
+        }
         return updated
     }
 
@@ -75,23 +79,28 @@ class CounterRepositoryImpl(
 
     override suspend fun updateCounter(counter: Counter) {
         counterDao.updateCounter(counter)
-        syncIfPublished(counter)
     }
 
     override suspend fun publishCounter(id: String): Counter? {
         val current = counterDao.getCounterById(id) ?: return null
 
-        val viewUuid = current.viewUuid ?: UUID.randomUUID().toString()
-        val managementUuid = current.updateUuid ?: UUID.randomUUID().toString()
+        val response = apiService.publishCounter(
+            initialCount = current.count,
+            readOnlyUuid = current.viewUuid,
+            readWriteUuid = current.updateUuid,
+            adminUuid = current.deleteUuid
+        ).getOrNull() ?: return null
+        
+        val viewUuid = response.roles["read_only"] ?: return null
+        // fallback to admin if read_write is absent
+        val managementUuid = response.roles["read_write"] ?: response.roles["admin"] ?: return null
 
         val publishedCounter = current.copy(
             isPublished = true,
             viewUuid = viewUuid,
             updateUuid = managementUuid,
-            deleteUuid = managementUuid
+            deleteUuid = response.roles["admin"]
         )
-
-        apiService.publishCounter(publishedCounter, viewUuid, managementUuid)
 
         counterDao.updateCounter(publishedCounter)
         return publishedCounter
@@ -116,16 +125,27 @@ class CounterRepositoryImpl(
             return Result.failure(IllegalStateException("Counter is not published"))
         }
         return apiService.fetchLiveCount(current.viewUuid).mapCatching { remoteState ->
-            val updated = current.copy(count = remoteState.count ?: current.count)
+            val updated = current.copy(count = remoteState.value)
             counterDao.updateCounter(updated)
             updated
         }
     }
 
-    private suspend fun syncIfPublished(counter: Counter) {
-        if (counter.isPublished && counter.updateUuid != null) {
-            runCatching {
-                apiService.updateCounter(counter.updateUuid, counter.count, counter.title)
+    override fun observeRemoteCount(id: String): Flow<Result<Counter>> = kotlinx.coroutines.flow.flow {
+        val current = counterDao.getCounterById(id)
+            ?: throw IllegalArgumentException("Counter with id $id not found")
+        if (!current.isPublished || current.viewUuid == null) {
+            throw IllegalStateException("Counter is not published")
+        }
+
+        apiService.observeLiveCount(current.viewUuid).collect { result ->
+            result.onSuccess { remoteState ->
+                val updated = counterDao.getCounterById(id) ?: return@onSuccess
+                val nextCounter = updated.copy(count = remoteState.value)
+                counterDao.updateCounter(nextCounter)
+                emit(Result.success(nextCounter))
+            }.onFailure {
+                emit(Result.failure(it))
             }
         }
     }

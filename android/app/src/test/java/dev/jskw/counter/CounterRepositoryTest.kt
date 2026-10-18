@@ -3,8 +3,9 @@ package dev.jskw.counter
 import dev.jskw.counter.data.local.CounterDao
 import dev.jskw.counter.data.model.Counter
 import dev.jskw.counter.data.remote.CounterApiService
-import dev.jskw.counter.data.remote.PublishCounterResponse
-import dev.jskw.counter.data.remote.RemoteCounterState
+import dev.jskw.counter.data.remote.RegisterResponse
+import dev.jskw.counter.data.remote.CounterInfoResponse
+import dev.jskw.counter.data.remote.SseUpdate
 import dev.jskw.counter.data.repository.CounterRepositoryImpl
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -70,39 +71,43 @@ class FakeCounterApiService : CounterApiService {
     var deletedUuid: String? = null
 
     override suspend fun publishCounter(
-        counter: Counter,
-        viewUuid: String,
-        managementUuid: String
-    ): Result<PublishCounterResponse> {
-        publishedViewUuid = viewUuid
-        publishedManagementUuid = managementUuid
+        initialCount: Int,
+        readOnlyUuid: String?,
+        readWriteUuid: String?,
+        adminUuid: String?
+    ): Result<RegisterResponse> {
+        publishedViewUuid = readOnlyUuid ?: "view-uuid"
+        publishedManagementUuid = readWriteUuid ?: "update-uuid"
+        val resolvedAdmin = adminUuid ?: "delete-uuid"
         return Result.success(
-            PublishCounterResponse(
-                success = true,
-                viewUuid = viewUuid,
-                updateUuid = managementUuid,
-                deleteUuid = managementUuid,
-                count = counter.count
+            RegisterResponse(
+                counter_id = "test",
+                value = initialCount,
+                roles = mapOf("read_only" to publishedViewUuid!!, "read_write" to publishedManagementUuid!!, "admin" to resolvedAdmin),
+                message = "success"
             )
         )
     }
 
-    override suspend fun updateCounter(
-        updateUuid: String,
-        count: Int,
-        title: String?
-    ): Result<Boolean> {
-        lastUpdatedCount = count
+    override suspend fun incrementCounter(token: String): Result<Boolean> {
         return Result.success(true)
     }
 
-    override suspend fun deleteCounter(deleteUuid: String): Result<Boolean> {
-        deletedUuid = deleteUuid
+    override suspend fun decrementCounter(token: String): Result<Boolean> {
         return Result.success(true)
     }
 
-    override suspend fun fetchLiveCount(viewUuid: String): Result<RemoteCounterState> {
-        return Result.success(RemoteCounterState(viewUuid = viewUuid, count = 42))
+    override suspend fun deleteCounter(token: String): Result<Boolean> {
+        deletedUuid = token
+        return Result.success(true)
+    }
+
+    override suspend fun fetchLiveCount(token: String): Result<CounterInfoResponse> {
+        return Result.success(CounterInfoResponse(counter_id = "test", value = 42, access = "admin"))
+    }
+
+    override fun observeLiveCount(token: String): kotlinx.coroutines.flow.Flow<Result<SseUpdate>> = kotlinx.coroutines.flow.flow {
+        emit(Result.success(SseUpdate(value = 42)))
     }
 }
 
@@ -172,7 +177,6 @@ class CounterRepositoryTest {
         assertNotNull(published.viewUuid)
         assertNotNull(published.updateUuid)
         assertNotNull(published.deleteUuid)
-        assertEquals(published.updateUuid, published.deleteUuid)
 
         assertEquals(published.viewUuid, fakeApi.publishedViewUuid)
         assertEquals(published.updateUuid, fakeApi.publishedManagementUuid)

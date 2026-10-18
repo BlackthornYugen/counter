@@ -149,6 +149,34 @@ class CounterViewModel(
         }
     }
 
+    private var observeJob: kotlinx.coroutines.Job? = null
+
+    fun observeRemoteCount(id: String) {
+        observeJob?.cancel()
+        observeJob = viewModelScope.launch {
+            _syncingCounterIds.update { it + id }
+            try {
+                repository.observeRemoteCount(id).collect { result ->
+                    result.onSuccess {
+                        // The repository updates the DB which updates the flows, so we just
+                        // observe for errors.
+                    }.onFailure { e ->
+                        _userMessage.value = "Live sync interrupted: ${e.message}"
+                        _syncingCounterIds.update { it - id }
+                    }
+                }
+            } catch(e: Exception) {
+               _userMessage.value = "Live sync interrupted: ${e.message}"
+               _syncingCounterIds.update { it - id }
+            }
+        }
+    }
+
+    fun stopObservingRemoteCount() {
+        observeJob?.cancel()
+        observeJob = null
+    }
+
     fun clearUserMessage() {
         _userMessage.value = null
     }

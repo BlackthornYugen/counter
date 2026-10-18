@@ -71,6 +71,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.jskw.counter.BuildConfig
 import dev.jskw.counter.data.model.Counter
 import dev.jskw.counter.ui.theme.CounterTheme
 
@@ -372,7 +373,7 @@ fun CounterDetailPane(
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = if (counter.isPublished) "Live on counter.jskw.dev" else "Publish to sync live count online",
+                                    text = if (counter.isPublished) "Live on ${BuildConfig.API_BASE_URL.removePrefix("https://").removePrefix("http://")}" else "Publish to sync live count online",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -397,7 +398,7 @@ fun CounterDetailPane(
                         enter = fadeIn() + scaleIn(animationSpec = spring(stiffness = Spring.StiffnessMedium)),
                         exit = fadeOut() + scaleOut()
                     ) {
-                        val shareUrl = "https://counter.jskw.dev/view/${counter.viewUuid}"
+                        val shareUrl = "${BuildConfig.API_BASE_URL}/#${counter.viewUuid}"
 
                         Column(
                             verticalArrangement = Arrangement.spacedBy(12.dp)
