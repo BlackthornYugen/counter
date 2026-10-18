@@ -290,8 +290,8 @@
   <script>
     (function() {
       try {
-        const hash = window.location.hash ? decodeURIComponent(window.location.hash.substring(1)).trim().replace(/^[\/#]+/, "") : "";
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const hash = window.location.hash ? decodeURIComponent(window.location.hash.substring(1)).trim() : "";
+        const uuidRegex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
         if (uuidRegex.test(hash)) {
           const cardReg = document.getElementById("card-registration");
           const container = document.querySelector(".app-container");

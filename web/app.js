@@ -192,12 +192,165 @@ function disconnectRoom() {
   if (activeBar) activeBar.style.display = "none";
 }
 
+const UUIDV4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_GENERIC_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function isValidUuid(token) {
   if (!token) return false;
   const cleaned = token.trim().replace(/^[\/#]+/, "").trim();
-  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  return UUID_REGEX.test(cleaned);
+  return UUID_GENERIC_REGEX.test(cleaned);
 }
+
+// Parses up to 3 UUIDs from an anchor / string, assuming any non-uuidv4 char is a delimiter.
+// Compresses multiple sequences of delimiters.
+// If the first candidate isn't a valid UUID (e.g. vanity name), it safely ignores it without error.
+function parseAnchorUuids(rawInput) {
+  if (!rawInput) return [];
+  let decoded = "";
+  try {
+    decoded = decodeURIComponent(rawInput);
+  } catch (e) {
+    decoded = rawInput;
+  }
+
+  const trimmed = decoded.replace(/^#+/, "").trim();
+  if (!trimmed) return [];
+
+  if (trimmed.toLowerCase() === "privacy" || trimmed.toLowerCase().startsWith("privacy")) {
+    window.location.href = "/privacy";
+    return [];
+  }
+
+  // Any character not valid in a UUIDv4 ([0-9a-fA-F-]) or sequences of multiple hyphens is a delimiter.
+  const rawParts = trimmed.split(/[^0-9a-fA-F-]+|--+/);
+  const uuids = [];
+
+  for (const rawPart of rawParts) {
+    const candidate = rawPart.replace(/^-+|-+$/g, "").trim();
+    if (!candidate) continue;
+    if (UUID_GENERIC_REGEX.test(candidate)) {
+      uuids.push(candidate.toLowerCase());
+      if (uuids.length === 3) {
+        break; // Parse up to 3 of them and ignore any extras
+      }
+    }
+  }
+
+  return uuids;
+}
+
+let currentCounterLabel = null;
+
+// Parses the counter label from the anchor (first non-UUID section if not a role keyword)
+function parseAnchorLabel(rawInput) {
+  if (!rawInput) return null;
+  let decoded = "";
+  try {
+    decoded = decodeURIComponent(rawInput);
+  } catch (e) {
+    decoded = rawInput;
+  }
+
+  const trimmed = decoded.replace(/^#+/, "").trim();
+  if (!trimmed) return null;
+
+  if (trimmed.toLowerCase() === "privacy" || trimmed.toLowerCase().startsWith("privacy")) {
+    return null;
+  }
+
+  // Split by '#'
+  const sections = trimmed.split("#").map(s => s.trim()).filter(Boolean);
+  if (sections.length === 0) return null;
+
+  const firstSection = sections[0];
+
+  // If the first section is a valid UUID, then it's not a label
+  if (isValidUuid(firstSection)) {
+    return null;
+  }
+
+  // Check if a UUID exists inside the first section (e.g. if delimited with hyphens, spaces, colons)
+  const uuidMatch = firstSection.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  let candidateLabel = firstSection;
+  if (uuidMatch) {
+    if (firstSection.indexOf(uuidMatch[0]) === 0) {
+      return null;
+    }
+    candidateLabel = firstSection.substring(0, firstSection.indexOf(uuidMatch[0])).trim().replace(/[-–—\s/!:]+$/, "").trim();
+  }
+
+  // Strip trailing role keywords if preceded by delimiter or boundary (e.g. "Counter 00fb10a2 read" -> "Counter 00fb10a2")
+  candidateLabel = candidateLabel.replace(/(?:^|[-–—\s/!:#])(read_only|read_write|read|write|admin|ro|rw)$/i, "").trim().replace(/[-–—\s/!:]+$/, "").trim();
+
+  if (!candidateLabel) return null;
+
+  // If the label is a role keyword ("read", "write", "admin", "read_only", "read_write", "ro", "rw"), it's not a label
+  const lower = candidateLabel.toLowerCase();
+  if (lower === "read" || lower === "write" || lower === "admin" || lower === "read_only" || lower === "read_write" || lower === "ro" || lower === "rw") {
+    return null;
+  }
+
+  return candidateLabel;
+}
+
+// Builds shareable hash containing the label as the first section and all lower-level UUIDs up to the given role
+// Admin: #<Label>#read#<uuid>#write#<uuid>#admin#<uuid>
+// Read-Write: #<Label>#read#<uuid>#write#<uuid>
+// Read-Only: #<Label>#read#<uuid>
+function buildShareHash(role, tokens, customLabel = null) {
+  if (!tokens) return "";
+  const readToken = tokens.read_only || tokens.read;
+  const writeToken = tokens.read_write || tokens.write;
+  const adminToken = tokens.admin;
+
+  const parts = [];
+
+  // First section of shared links is the counter label (e.g. "Counter 00fb10a2")
+  const label = customLabel || currentCounterLabel || (activeCounterId ? `Counter ${activeCounterId.substring(0, 8)}` : null);
+  if (label) {
+    parts.push(label);
+  }
+
+  if (role === "admin") {
+    if (readToken) parts.push(`read#${readToken}`);
+    if (writeToken) parts.push(`write#${writeToken}`);
+    if (adminToken) parts.push(`admin#${adminToken}`);
+  } else if (role === "read_write") {
+    if (readToken) parts.push(`read#${readToken}`);
+    if (writeToken) parts.push(`write#${writeToken}`);
+  } else if (role === "read_only") {
+    if (readToken) parts.push(`read#${readToken}`);
+  }
+
+  if (parts.length === 0 || (parts.length === 1 && label)) {
+    const fallbackToken = tokens[role] || adminToken || writeToken || readToken;
+    if (fallbackToken) {
+      if (label) return `#${label}#${fallbackToken}`;
+      return `#${fallbackToken}`;
+    }
+    return label ? `#${label}` : "";
+  }
+
+  return `#${parts.join("#")}`;
+}
+
+function updateShareLinks(role, tokens) {
+  const shareHash = buildShareHash(role, tokens);
+  const activeBar = document.getElementById("active-link-bar");
+  const activeAnchor = document.getElementById("active-hashtag-anchor");
+  if (activeBar && activeAnchor) {
+    if (shareHash) {
+      activeBar.style.display = "flex";
+      activeAnchor.href = shareHash;
+      activeAnchor.textContent = shareHash;
+      activeAnchor.title = `Current room share link (${role})`;
+    } else {
+      activeBar.style.display = "none";
+    }
+  }
+}
+
+let lastHandledHash = null;
 
 function moveRegistrationCardToEnd(moveToEnd) {
   const cardReg = document.getElementById("card-registration");
@@ -220,12 +373,172 @@ function moveRegistrationCardToEnd(moveToEnd) {
   }
 }
 
-async function connectWithToken(token, updateHash = true) {
+async function handleLoadedUuids(uuids, updateHash = true, rawInput = null) {
+  if (!uuids || uuids.length === 0) {
+    moveRegistrationCardToEnd(false);
+    return;
+  }
+
+  const parsedLabel = parseAnchorLabel(rawInput || window.location.hash);
+  if (parsedLabel) {
+    currentCounterLabel = parsedLabel;
+  }
+
+  updateStatusPill("connecting", "Verifying UUID(s)...");
+
+  // Check each UUID against the server
+  const queryPromises = uuids.map(async (u) => {
+    try {
+      const res = await fetch(`/api/counters/${u}`);
+      if (res.ok) {
+        const data = await res.json();
+        return { uuid: u, ok: true, data };
+      }
+    } catch (e) {}
+    return { uuid: u, ok: false };
+  });
+
+  const results = await Promise.all(queryPromises);
+  const anyOk = results.some(r => r.ok);
+
+  if (anyOk) {
+    // Existing room found!
+    // Process results in order.
+    // If it's admin#admin#read: the first admin is clobbered by the second admin,
+    // and resolvedRoles["read_write"] will remain undefined (no write to load).
+    const resolvedRoles = {};
+    let counterId = null;
+    let counterValue = 0;
+
+    for (const res of results) {
+      if (res.ok && res.data) {
+        const role = res.data.access; // "admin", "read_write", or "read_only"
+        resolvedRoles[role] = res.uuid; // Later uuid with the same role clobbers earlier one
+        counterId = res.data.counter_id;
+        counterValue = res.data.value;
+      }
+    }
+
+    // Fill in register box
+    if (resolvedRoles.read_only) {
+      document.getElementById("reg-ro-uuid").value = resolvedRoles.read_only;
+    }
+    if (resolvedRoles.read_write) {
+      document.getElementById("reg-rw-uuid").value = resolvedRoles.read_write;
+      currentMode = "3uuid";
+      document.getElementById("btn-mode-3uuid").classList.add("active");
+      document.getElementById("btn-mode-2uuid").classList.remove("active");
+      document.getElementById("group-rw-uuid").style.display = "block";
+    } else {
+      document.getElementById("reg-rw-uuid").value = "";
+      if (resolvedRoles.read_only && resolvedRoles.admin) {
+        currentMode = "2uuid";
+        document.getElementById("btn-mode-2uuid").classList.add("active");
+        document.getElementById("btn-mode-3uuid").classList.remove("active");
+        document.getElementById("group-rw-uuid").style.display = "none";
+      }
+    }
+    if (resolvedRoles.admin) {
+      document.getElementById("reg-admin-uuid").value = resolvedRoles.admin;
+    }
+
+    // Determine highest privilege role to connect as: admin > read_write > read_only
+    const connectRole = resolvedRoles.admin ? "admin" : (resolvedRoles.read_write ? "read_write" : "read_only");
+    const connectToken = resolvedRoles[connectRole];
+
+    // Fill in view client box
+    document.getElementById("input-connect-uuid").value = connectToken;
+
+    activeCounterId = counterId;
+    currentRole = connectRole;
+    activeTokens = { ...resolvedRoles };
+
+    if (!currentCounterLabel && counterId) {
+      currentCounterLabel = `Counter ${counterId.substring(0, 8)}`;
+    }
+    const statusEl = document.getElementById("counter-room-status");
+    if (statusEl) statusEl.textContent = currentCounterLabel;
+    updateCounterDisplay(counterValue);
+    applyRolePermissions(currentRole);
+
+    // Update quick role switch container
+    document.getElementById("role-switcher-container").style.display = "block";
+    document.getElementById("chip-admin").style.display = activeTokens.admin ? "inline-flex" : "none";
+    document.getElementById("chip-rw").style.display = activeTokens.read_write ? "inline-flex" : "none";
+    document.getElementById("chip-ro").style.display = activeTokens.read_only ? "inline-flex" : "none";
+
+    document.querySelectorAll(".chip-role").forEach(c => c.classList.remove("active"));
+    const activeChip = document.querySelector(`.chip-role[data-role="${currentRole}"]`);
+    if (activeChip) activeChip.classList.add("active");
+
+    moveRegistrationCardToEnd(true);
+
+    // Update share links & anchor
+    const shareHash = buildShareHash(currentRole, activeTokens, currentCounterLabel);
+    updateShareLinks(currentRole, activeTokens);
+
+    if (updateHash && window.location.hash !== shareHash) {
+      lastHandledHash = shareHash;
+      window.location.hash = shareHash;
+    } else {
+      lastHandledHash = window.location.hash;
+    }
+
+    try { localStorage.setItem("counter_last_token", connectToken); } catch(e) {}
+
+    disconnectRoom();
+    if (currentProtocol === "ws") {
+      connectRoomWebSocket(connectToken);
+    } else {
+      connectRoomSSE(connectToken);
+    }
+  } else {
+    // None of the UUIDs exist in DB yet (unregistered / ready to register).
+    // Usually the 3 uuids should be a read/write/admin token.
+    const resolvedRoles = {};
+    if (uuids.length === 3) {
+      resolvedRoles.read_only = uuids[0];
+      resolvedRoles.read_write = uuids[1];
+      resolvedRoles.admin = uuids[2];
+      currentMode = "3uuid";
+      document.getElementById("btn-mode-3uuid").classList.add("active");
+      document.getElementById("btn-mode-2uuid").classList.remove("active");
+      document.getElementById("group-rw-uuid").style.display = "block";
+    } else if (uuids.length === 2) {
+      resolvedRoles.read_only = uuids[0];
+      resolvedRoles.admin = uuids[1];
+      currentMode = "2uuid";
+      document.getElementById("btn-mode-2uuid").classList.add("active");
+      document.getElementById("btn-mode-3uuid").classList.remove("active");
+      document.getElementById("group-rw-uuid").style.display = "none";
+    } else if (uuids.length === 1) {
+      resolvedRoles.admin = uuids[0];
+    }
+
+    // Fill in register box
+    if (resolvedRoles.read_only) document.getElementById("reg-ro-uuid").value = resolvedRoles.read_only;
+    if (resolvedRoles.read_write) document.getElementById("reg-rw-uuid").value = resolvedRoles.read_write;
+    if (resolvedRoles.admin) document.getElementById("reg-admin-uuid").value = resolvedRoles.admin;
+
+    // Fill in view client box
+    const connectUuid = resolvedRoles.admin || resolvedRoles.read_write || resolvedRoles.read_only || uuids[0];
+    document.getElementById("input-connect-uuid").value = connectUuid;
+
+    const statusEl = document.getElementById("counter-room-status");
+    if (statusEl) statusEl.textContent = currentCounterLabel || "Unregistered Counter";
+
+    updateStatusPill("disconnected", "Unregistered Room");
+    moveRegistrationCardToEnd(false);
+  }
+}
+
+async function connectWithToken(token, updateHash = true, customLabel = null) {
   if (!token) {
     showToast("Please enter a room access UUID.", "error");
     return;
   }
-  const cleaned = token.trim().replace(/^[\/#]+/, "").trim();
+  const uuids = parseAnchorUuids(token);
+  const cleaned = uuids.length > 0 ? uuids[0] : token.trim().replace(/^[\/#]+/, "").trim();
   if (!isValidUuid(cleaned)) {
     showToast("Provided token must be formatted as a valid UUID.", "error");
     moveRegistrationCardToEnd(false);
@@ -249,9 +562,24 @@ async function connectWithToken(token, updateHash = true) {
     currentRole = data.access;
     activeTokens[currentRole] = cleaned;
 
+    if (customLabel) {
+      currentCounterLabel = customLabel;
+    } else if (!currentCounterLabel && data.counter_id) {
+      currentCounterLabel = `Counter ${data.counter_id.substring(0, 8)}`;
+    }
+
+    // Fill in register box for this role
+    if (currentRole === "admin") {
+      document.getElementById("reg-admin-uuid").value = cleaned;
+    } else if (currentRole === "read_write") {
+      document.getElementById("reg-rw-uuid").value = cleaned;
+    } else if (currentRole === "read_only") {
+      document.getElementById("reg-ro-uuid").value = cleaned;
+    }
+
     document.getElementById("input-connect-uuid").value = cleaned;
     const statusEl = document.getElementById("counter-room-status");
-    if (statusEl) statusEl.textContent = `Counter ${data.counter_id.substring(0, 8)}`;
+    if (statusEl) statusEl.textContent = currentCounterLabel;
     updateCounterDisplay(data.value);
     applyRolePermissions(currentRole);
 
@@ -260,18 +588,14 @@ async function connectWithToken(token, updateHash = true) {
     const activeChip = document.querySelector(`.chip-role[data-role="${currentRole}"]`);
     if (activeChip) activeChip.classList.add("active");
 
-    // Display active room hashtag link
-    const activeBar = document.getElementById("active-link-bar");
-    const activeAnchor = document.getElementById("active-hashtag-anchor");
-    if (activeBar && activeAnchor) {
-      activeBar.style.display = "flex";
-      activeAnchor.href = `#${cleaned}`;
-      activeAnchor.textContent = `#${cleaned}`;
-    }
+    // Display active room hashtag link with lower level uuids and label
+    const shareHash = buildShareHash(currentRole, activeTokens, currentCounterLabel);
+    updateShareLinks(currentRole, activeTokens);
 
     // Update URL hashtag
-    if (updateHash && window.location.hash !== `#${cleaned}`) {
-      window.location.hash = `#${cleaned}`;
+    if (updateHash && shareHash && window.location.hash !== shareHash) {
+      lastHandledHash = shareHash;
+      window.location.hash = shareHash;
     }
 
     // Save to localStorage
@@ -358,7 +682,7 @@ function handleIncomingMessage(data) {
   if (data.type === "connected") {
     updateCounterDisplay(data.value);
     const statusEl = document.getElementById("counter-room-status");
-    if (statusEl) statusEl.textContent = `Counter ${data.counter_id.substring(0, 8)}`;
+    if (statusEl) statusEl.textContent = currentCounterLabel || `Counter ${data.counter_id.substring(0, 8)}`;
     if (data.recent_events && Array.isArray(data.recent_events)) {
       document.getElementById("stream-feed").innerHTML = "";
       data.recent_events.forEach(ev => addEventToStream(ev));
@@ -370,6 +694,7 @@ function handleIncomingMessage(data) {
     showToast(`Counter room was deleted: ${data.message || ''}`, "error");
     disconnectRoom();
     applyRolePermissions("none");
+    currentCounterLabel = null;
     const statusEl = document.getElementById("counter-room-status");
     if (statusEl) statusEl.textContent = "Room Deleted";
     updateCounterDisplay(0);
@@ -457,6 +782,7 @@ async function deleteCounterRoom() {
     if (regResult) regResult.style.display = "none";
     activeTokens = {};
     activeCounterId = null;
+    currentCounterLabel = null;
     if (window.location.hash) {
       history.replaceState(null, "", window.location.pathname);
     }
@@ -601,13 +927,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
       showToast("Counter Room registered! UUID hashes saved to SQLite.", "success");
       activeCounterId = data.counter_id;
-      activeTokens = data.roles;
+      activeTokens = { ...data.roles };
+      currentCounterLabel = currentCounterLabel || `Counter ${data.counter_id.substring(0, 8)}`;
+      const statusEl = document.getElementById("counter-room-status");
+      if (statusEl) statusEl.textContent = currentCounterLabel;
 
       // Populate registration summary box
       document.getElementById("reg-result").style.display = "block";
       document.getElementById("res-counter-id").textContent = `ID: ${data.counter_id}`;
       
-      // Populate role link cards linking to #<uuid>
+      // Populate role link cards linking to share URLs with lower level tokens and label
       const roleCardsContainer = document.getElementById("reg-role-cards");
       if (roleCardsContainer) {
         roleCardsContainer.innerHTML = "";
@@ -618,23 +947,24 @@ document.addEventListener("DOMContentLoaded", () => {
           const icon = role === "admin" ? "👑" : (role === "read_write" ? "✍️" : "👁️");
           const title = role === "admin" ? "Admin" : (role === "read_write" ? "Read-Write" : "Read-Only");
           const desc = role === "admin" ? "Full Control" : (role === "read_write" ? "Write & Read" : "View Only");
-          const shareUrl = `${window.location.origin}${window.location.pathname}#${token}`;
+          const shareHash = buildShareHash(role, data.roles, currentCounterLabel);
+          const shareUrl = `${window.location.origin}${window.location.pathname}${shareHash}`;
 
           const card = document.createElement("a");
-          card.href = `#${token}`;
+          card.href = shareHash;
           card.className = `role-link-card card-role-${role}`;
-          card.setAttribute("title", `Connect as ${title} using #${token}`);
+          card.setAttribute("title", `Connect as ${title} using ${shareHash}`);
           card.innerHTML = `
             <div class="role-card-top">
               <span class="role-card-badge">${icon} ${title}</span>
               <span class="label-role-tag tag-${role === 'admin' ? 'admin' : (role === 'read_write' ? 'rw' : 'ro')}">${desc}</span>
             </div>
-            <div class="role-card-token">
-              #${token}
+            <div class="role-card-token" title="${shareHash}">
+              ${shareHash}
             </div>
             <div class="role-card-actions">
               <span class="role-btn-action">⚡ Connect #${title}</span>
-              <button type="button" class="role-btn-action btn-copy-card-link" data-link="${shareUrl}" title="Copy shareable link with hashtag">🔗 Copy Link</button>
+              <button type="button" class="role-btn-action btn-copy-card-link" data-link="${shareUrl}" title="Copy shareable link with lower level tokens">🔗 Copy Link</button>
             </div>
           `;
           roleCardsContainer.appendChild(card);
@@ -655,13 +985,14 @@ document.addEventListener("DOMContentLoaded", () => {
       tbody.innerHTML = "";
       for (const [role, token] of Object.entries(data.roles)) {
         const hash = data.token_hashes[role];
+        const shareHash = buildShareHash(role, data.roles, currentCounterLabel);
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td><span class="label-role-tag tag-${role === 'admin' ? 'admin' : (role === 'read_write' ? 'rw' : 'ro')}">${role}</span></td>
-          <td class="code-cell" title="${token}"><a href="#${token}" style="color:var(--text-main); text-decoration:none;">#${token}</a></td>
+          <td class="code-cell" title="${shareHash}"><a href="${shareHash}" style="color:var(--text-main); text-decoration:none;">${shareHash}</a></td>
           <td class="code-cell" title="${hash}">${hash.substring(0, 16)}...</td>
           <td>
-            <button type="button" class="btn-secondary copy-btn" data-copy="${token}" style="padding:2px 8px; font-size:11px;">Copy</button>
+            <button type="button" class="btn-secondary copy-btn" data-copy="${shareHash}" style="padding:2px 8px; font-size:11px;">Copy</button>
           </td>
         `;
         tbody.appendChild(tr);
@@ -670,16 +1001,24 @@ document.addEventListener("DOMContentLoaded", () => {
       tbody.querySelectorAll(".copy-btn").forEach(btn => {
         btn.addEventListener("click", () => {
           navigator.clipboard.writeText(btn.getAttribute("data-copy"));
-          showToast("Token copied to clipboard!", "info");
+          showToast("Share link copied to clipboard!", "info");
         });
       });
 
       // Show role switcher chips since we have all keys in this session
       document.getElementById("role-switcher-container").style.display = "block";
+      document.getElementById("chip-admin").style.display = activeTokens.admin ? "inline-flex" : "none";
+      document.getElementById("chip-rw").style.display = activeTokens.read_write ? "inline-flex" : "none";
+      document.getElementById("chip-ro").style.display = activeTokens.read_only ? "inline-flex" : "none";
 
       // Connect to live room using the admin token and update hashtag
       document.getElementById("input-connect-uuid").value = data.roles.admin;
-      connectWithToken(data.roles.admin, true);
+      currentRole = "admin";
+      const adminShareHash = buildShareHash("admin", activeTokens, currentCounterLabel);
+      lastHandledHash = adminShareHash;
+      window.location.hash = adminShareHash;
+      connectWithToken(data.roles.admin, false, currentCounterLabel);
+      updateShareLinks("admin", activeTokens);
       initSimulator();
 
     } catch (e) {
@@ -690,13 +1029,27 @@ document.addEventListener("DOMContentLoaded", () => {
   // Connect With Existing UUID Button
   document.getElementById("btn-connect-uuid").addEventListener("click", () => {
     const val = document.getElementById("input-connect-uuid").value.trim();
-    connectWithToken(val, true);
+    const uuids = parseAnchorUuids(val);
+    if (uuids.length > 0) {
+      const parsedLabel = parseAnchorLabel(val);
+      if (parsedLabel) currentCounterLabel = parsedLabel;
+      handleLoadedUuids(uuids, true, val);
+    } else {
+      showToast("Provided token must be formatted as a valid UUID.", "error");
+    }
   });
 
   document.getElementById("input-connect-uuid").addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       const val = document.getElementById("input-connect-uuid").value.trim();
-      connectWithToken(val, true);
+      const uuids = parseAnchorUuids(val);
+      if (uuids.length > 0) {
+        const parsedLabel = parseAnchorLabel(val);
+        if (parsedLabel) currentCounterLabel = parsedLabel;
+        handleLoadedUuids(uuids, true, val);
+      } else {
+        showToast("Provided token must be formatted as a valid UUID.", "error");
+      }
     }
   });
 
@@ -717,14 +1070,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Role Switcher Chips
   function switchRole(role) {
+    if (!activeTokens[role]) return;
     currentRole = role;
     document.querySelectorAll(".chip-role").forEach(c => c.classList.remove("active"));
     const activeChip = document.querySelector(`.chip-role[data-role="${role}"]`);
     if (activeChip) activeChip.classList.add("active");
     const token = activeTokens[role];
     if (token) {
-      window.location.hash = `#${token}`;
-      connectWithToken(token, false);
+      const shareHash = buildShareHash(role, activeTokens, currentCounterLabel);
+      lastHandledHash = shareHash;
+      window.location.hash = shareHash;
+      document.getElementById("input-connect-uuid").value = token;
+      connectWithToken(token, false, currentCounterLabel);
+      updateShareLinks(role, activeTokens);
     }
   }
 
@@ -757,27 +1115,13 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast("Event stream feed cleared", "info");
   });
 
-  // Hashtag extraction helper
-  function getHashToken() {
-    if (window.location.hash && window.location.hash.length > 1) {
-      const raw = decodeURIComponent(window.location.hash.substring(1)).trim();
-      const cleaned = raw.replace(/^[\/#]+/, "").trim();
-      if (cleaned.toLowerCase() === "privacy") {
-        window.location.href = "/privacy";
-        return null;
-      }
-      return cleaned;
-    }
-    return null;
-  }
-
   // Active link bar copy button
   const btnCopyActive = document.getElementById("btn-copy-active-link");
   if (btnCopyActive) {
     btnCopyActive.addEventListener("click", () => {
-      const anchor = document.getElementById("active-hashtag-anchor");
-      if (anchor && anchor.getAttribute("href") && anchor.getAttribute("href") !== "#") {
-        const fullUrl = `${window.location.origin}${window.location.pathname}${anchor.getAttribute("href")}`;
+      const shareHash = buildShareHash(currentRole, activeTokens, currentCounterLabel);
+      if (shareHash) {
+        const fullUrl = `${window.location.origin}${window.location.pathname}${shareHash}`;
         navigator.clipboard.writeText(fullUrl);
         showToast("Room share link with hashtag copied to clipboard!", "info");
       }
@@ -786,18 +1130,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Listen to browser hash changes (e.g. user clicks back/forward or a role card #link)
   window.addEventListener("hashchange", () => {
-    const hashToken = getHashToken();
-    if (hashToken) {
-      if (isValidUuid(hashToken)) {
-        moveRegistrationCardToEnd(true);
-      } else {
-        moveRegistrationCardToEnd(false);
-      }
-      const activeToken = activeTokens[currentRole];
-      if (hashToken !== activeToken) {
-        document.getElementById("input-connect-uuid").value = hashToken;
-        connectWithToken(hashToken, false);
-      }
+    const currentHash = window.location.hash;
+    if (currentHash === lastHandledHash) return;
+    const uuids = parseAnchorUuids(currentHash);
+    if (uuids.length > 0) {
+      lastHandledHash = currentHash;
+      const parsedLabel = parseAnchorLabel(currentHash);
+      if (parsedLabel) currentCounterLabel = parsedLabel;
+      handleLoadedUuids(uuids, false, currentHash);
     } else {
       moveRegistrationCardToEnd(false);
     }
@@ -809,22 +1149,25 @@ document.addEventListener("DOMContentLoaded", () => {
   if (initialStatusEl) initialStatusEl.textContent = "No Room Connected";
   updateStatusPill("disconnected", "Not Connected");
 
-  // Check if URL has hashtag #<uuid> on initial load
-  const initialHash = getHashToken();
-  if (initialHash && isValidUuid(initialHash)) {
-    moveRegistrationCardToEnd(true);
-    document.getElementById("input-connect-uuid").value = initialHash;
-    connectWithToken(initialHash, false);
-  } else if (initialHash) {
-    document.getElementById("input-connect-uuid").value = initialHash;
-    connectWithToken(initialHash, false);
+  // Check if URL has hashtag on initial load
+  const initialHash = window.location.hash;
+  const initialUuids = parseAnchorUuids(initialHash);
+  if (initialUuids.length > 0) {
+    lastHandledHash = initialHash;
+    const parsedLabel = parseAnchorLabel(initialHash);
+    if (parsedLabel) currentCounterLabel = parsedLabel;
+    handleLoadedUuids(initialUuids, false, initialHash);
   } else {
     // Check URL query parameters for ?token=<uuid> or ?uuid=<uuid>
     const urlParams = new URLSearchParams(window.location.search);
     const tokenParam = urlParams.get("token") || urlParams.get("uuid");
     if (tokenParam) {
-      document.getElementById("input-connect-uuid").value = tokenParam;
-      connectWithToken(tokenParam, true);
+      const paramUuids = parseAnchorUuids(tokenParam);
+      if (paramUuids.length > 0) {
+        const parsedLabel = parseAnchorLabel(tokenParam);
+        if (parsedLabel) currentCounterLabel = parsedLabel;
+        handleLoadedUuids(paramUuids, true, tokenParam);
+      }
     }
   }
 });

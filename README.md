@@ -257,6 +257,144 @@ data: {"type": "deleted", "counter_id": "f8577a76-...", "message": "Counter room
 
 ---
 
+## 🔗 Client URL Hash & Deep Link Specification
+
+Both the web dashboard and native Android client exchange room access and configuration via URL fragment anchors (`#...`). This enables peer-to-peer sharing, zero-configuration auto-connecting, role escalation/demotion, and custom naming without requiring centralized user accounts.
+
+### 1. Anchor Structure & Examples
+
+The canonical anchor scheme places a **counter label** first, followed by role tags and corresponding UUIDv4 secret keys:
+
+```
+#<Counter Label>#read#<ReadOnlyUUID>#write#<ReadWriteUUID>#admin#<AdminUUID>
+```
+
+#### Shared Links by Role:
+- **👑 Admin Link (3-UUID Room)**: Includes all lower-level tokens:
+  ```
+  http://localhost:8000/#Counter 00fb10a2#read#c768f56e-8ff4-4363-8822-79ee8ca6eef4#write#e2244bb4-0997-4ef8-8280-9dfbf2ba1022#admin#523a8867-b50a-4a25-a1c1-40c42be279ab
+  ```
+- **👑 Admin Link (2-UUID Room)**: Write token is omitted:
+  ```
+  http://localhost:8000/#Counter 00fb10a2#read#c768f56e-8ff4-4363-8822-79ee8ca6eef4#admin#523a8867-b50a-4a25-a1c1-40c42be279ab
+  ```
+- **✍️ Read-Write Link**: Includes read and write tokens:
+  ```
+  http://localhost:8000/#Counter 00fb10a2#read#c768f56e-8ff4-4363-8822-79ee8ca6eef4#write#e2244bb4-0997-4ef8-8280-9dfbf2ba1022
+  ```
+- **👁️ Read-Only Link**: Includes only the read token:
+  ```
+  http://localhost:8000/#Counter 00fb10a2#read#c768f56e-8ff4-4363-8822-79ee8ca6eef4
+  ```
+
+---
+
+### 2. Counter Label & User Renaming
+
+- **Default Label**: When a counter room is registered or connected without an existing label, clients default the name to `Counter <counter_id[:8]>` (for example, `Counter 00fb10a2`).
+- **User Renaming**: Users can rename their counter before sharing simply by editing the text before the tokens in the URL (e.g., `#Kitchen Inventory#read#...#write#...`).
+- **Client Label Parsing**:
+  - The **first non-UUID section** of the anchor is parsed as the counter's display label.
+  - If the first section is a valid UUID, starts with a UUID, or is a reserved role keyword (`read`, `write`, `admin`, `read_only`, `read_write`, `ro`, `rw`), it is **not** treated as a label.
+  - Clients restore this parsed label into the UI counter status title.
+
+---
+
+### 3. Parsing Rules for Android & Web Clients
+
+Clients (including the Android app and web dashboard) follow these specifications when parsing incoming deep links or user-pasted strings:
+
+1. **Delimiter Flexibility & Compression**:
+   - Any character outside of the standard UUIDv4 character set (`[0-9a-fA-F-]`) or sequence of repeated hyphens (`--+`) is considered a delimiter (such as `#`, spaces, hyphens, commas, bangs `!`, colons, or slashes).
+   - Multiple consecutive delimiters are compressed into one. For instance, `#uuid1 - uuid2 - uuid3` or `#uuid1#uuid2!uuid3#uuid4ignored` are parsed identically.
+2. **Parse Up to 3 UUIDs**:
+   - Clients scan for valid UUIDv4 tokens (`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).
+   - Up to **3 UUIDs** are extracted. Any additional UUID candidates beyond the 3rd are safely ignored.
+3. **Role Resolution & Clobbering**:
+   - Extracted UUIDs are verified via `GET /api/counters/{uuid}` to identify each token's role (`read_only`, `read_write`, `admin`).
+   - If an anchor contains duplicate tokens for the same role (e.g., `admin#admin#read`), the **later** UUID clobbers earlier ones. If no write token exists, `read_write` remains unassigned.
+4. **Graceful Handling of Vanity & Non-UUID Candidates**:
+   - If the anchor contains vanity names or arbitrary words that are not valid UUIDs (e.g., `#my cool uuids#cool1#cool2#cool3`), candidates that fail the UUIDv4 test are safely skipped without displaying error toasts or disrupting the application.
+
+---
+
+### 4. Android Client Reference Implementation (Kotlin)
+
+```kotlin
+data class ParsedCounterLink(
+    val label: String?,
+    val uuids: List<String>
+)
+
+object CounterLinkParser {
+    private val UUID_REGEX = Regex(
+        "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    )
+    private val EMBEDDED_UUID_REGEX = Regex(
+        "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+    )
+    private val ROLE_KEYWORDS = setOf(
+        "read", "write", "admin", "read_only", "read_write", "ro", "rw"
+    )
+
+    fun parse(rawInput: String?): ParsedCounterLink {
+        if (rawInput.isNullOrBlank()) return ParsedCounterLink(null, emptyList())
+
+        val decoded = try {
+            java.net.URLDecoder.decode(rawInput, "UTF-8")
+        } catch (_: Exception) {
+            rawInput
+        }
+        val trimmed = decoded.trimStart('#').trim()
+        if (trimmed.isEmpty()) return ParsedCounterLink(null, emptyList())
+
+        // 1. Extract label from first section if non-UUID and not a role keyword
+        val sections = trimmed.split("#").map { it.trim() }.filter { it.isNotEmpty() }
+        var parsedLabel: String? = null
+
+        if (sections.isNotEmpty()) {
+            val first = sections[0]
+            val match = EMBEDDED_UUID_REGEX.find(first)
+            val candidate = if (match != null) {
+                if (match.range.first == 0) null
+                else first.substring(0, match.range.first).trim().trimEnd('-', '—', '!', ' ', ':', '/')
+            } else {
+                first
+            }
+
+            // Strip trailing role keyword if preceded by delimiter (e.g. "Counter 00fb10a2 read" -> "Counter 00fb10a2")
+            val cleaned = candidate
+                ?.replace(Regex("(?:^|[-–—\\s/!:#])(read_only|read_write|read|write|admin|ro|rw)$", RegexOption.IGNORE_CASE), "")
+                ?.trim()
+                ?.trimEnd('-', '—', '!', ' ', ':', '/')
+
+            if (!cleaned.isNullOrBlank() && 
+                !UUID_REGEX.matches(cleaned) && 
+                cleaned.lowercase() !in ROLE_KEYWORDS
+            ) {
+                parsedLabel = cleaned
+            }
+        }
+
+        // 2. Parse up to 3 valid UUIDs, treating any non-UUID char as a delimiter
+        val rawParts = trimmed.split(Regex("[^0-9a-fA-F-]+|--+"))
+        val uuids = mutableListOf<String>()
+
+        for (part in rawParts) {
+            val candidate = part.trim('-', ' ')
+            if (candidate.isNotEmpty() && UUID_REGEX.matches(candidate)) {
+                uuids.add(candidate.lowercase())
+                if (uuids.size == 3) break
+            }
+        }
+
+        return ParsedCounterLink(parsedLabel, uuids)
+    }
+}
+```
+
+---
+
 ## 🔒 SQLite Database Schema
 
 The database uses SQLite with 3 tables:

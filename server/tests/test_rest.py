@@ -176,7 +176,7 @@ async def test_serve_privacy_route() -> None:
         assert "Privacy Policy" in res.text
         assert "Core Operating Principles" in res.text
         assert "Zero-Identity Synchronization" in res.text
-        assert "dev.jskw.counter" in res.text
+        assert "dev.jskw.count" in res.text
 
         # Test /privacy/
         res_slash = await client.get("/privacy/")
