@@ -390,6 +390,9 @@ function updateShareLinks(role, tokens) {
     } else {
       activeBar.style.display = "none";
     }
+  }
+}
+
 function renderRoleCards(tokens, counterId = null) {
   const regResult = document.getElementById("reg-result");
   const roleCardsContainer = document.getElementById("reg-role-cards");
