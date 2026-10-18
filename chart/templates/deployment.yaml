@@ -14,6 +14,7 @@ spec:
       labels:
         app: {{ .Release.Name }}
     spec:
+      enableServiceLinks: false
       containers:
       - name: counter
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
@@ -39,12 +40,12 @@ spec:
         {{- end }}
         resources:
           {{- toYaml .Values.resources | nindent 10 }}
-        {{- if .Values.env }}
         env:
+        - name: COUNTER_PORT
+          value: {{ .Values.service.targetPort | default 8000 | quote }}
         {{- range $key, $val := .Values.env }}
         - name: {{ $key }}
           value: {{ $val | quote }}
-        {{- end }}
         {{- end }}
         {{- if .Values.persistence.enabled }}
         volumeMounts:
