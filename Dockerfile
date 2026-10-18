@@ -1,16 +1,26 @@
 # syntax=docker/dockerfile:1
+
+# Stage 1: Install frontend JS dependencies
+FROM node:22-slim AS frontend
+WORKDIR /app/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci --omit=dev
+
+# Stage 2: Final application image
 FROM python:3.13-slim
 
 WORKDIR /app
 
-# Install dependencies using pip
+# Install Python dependencies
 COPY server/pyproject.toml /app/server/
 WORKDIR /app/server
 RUN pip install --no-cache-dir .
 
 # Copy application source and frontend web assets
+WORKDIR /app
 COPY server /app/server
 COPY web /app/web
+COPY --from=frontend /app/web/node_modules /app/web/node_modules
 
 # Create persistent storage directory for SQLite database
 RUN mkdir -p /data

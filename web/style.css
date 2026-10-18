@@ -524,6 +524,67 @@ body {
   color: #fff;
 }
 
+/* QR Code card layout */
+.role-card-qr-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.role-card-qr {
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-color);
+  transition: all 0.2s ease;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.role-card-qr:hover {
+  transform: scale(1.05);
+  border-color: var(--border-hover);
+}
+
+.card-role-admin .role-card-qr:hover {
+  box-shadow: 0 0 16px rgba(244, 63, 94, 0.35);
+  border-color: var(--accent-rose);
+}
+
+.card-role-read_write .role-card-qr:hover {
+  box-shadow: 0 0 16px var(--accent-violet-glow);
+  border-color: var(--accent-violet);
+}
+
+.card-role-read_only .role-card-qr:hover {
+  box-shadow: 0 0 16px var(--accent-cyan-glow);
+  border-color: var(--accent-cyan);
+}
+
+.role-card-qr img,
+.role-card-qr canvas {
+  display: block;
+  border-radius: 2px;
+}
+
+.role-card-link-text {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: break-all;
+  transition: color 0.15s ease;
+}
+
+.role-card-link-text:hover {
+  color: var(--accent-cyan);
+}
+
 /* Live Client Room */
 .room-controls-row {
   display: flex;

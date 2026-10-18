@@ -993,34 +993,49 @@ document.addEventListener("DOMContentLoaded", () => {
           const shareHash = buildShareHash(role, data.roles, currentCounterLabel);
           const shareUrl = `${window.location.origin}${window.location.pathname}${shareHash}`;
 
-          const card = document.createElement("a");
-          card.href = shareHash;
+          const card = document.createElement("div");
           card.className = `role-link-card card-role-${role}`;
-          card.setAttribute("title", `Connect as ${title} using ${shareHash}`);
+
+          // QR code colours per role
+          const qrColors = {
+            admin: { dark: "#f43f5e", light: "transparent" },
+            read_write: { dark: "#8b5cf6", light: "transparent" },
+            read_only: { dark: "#06b6d4", light: "transparent" },
+          };
+          const colors = qrColors[role];
+
           card.innerHTML = `
             <div class="role-card-top">
               <span class="role-card-badge">${icon} ${title}</span>
               <span class="label-role-tag tag-${role === 'admin' ? 'admin' : (role === 'read_write' ? 'rw' : 'ro')}">${desc}</span>
             </div>
-            <div class="role-card-token" title="${shareHash}">
-              ${shareHash}
-            </div>
-            <div class="role-card-actions">
-              <span class="role-btn-action">⚡ Connect #${title}</span>
-              <button type="button" class="role-btn-action btn-copy-card-link" data-link="${shareUrl}" title="Copy shareable link with lower level tokens">🔗 Copy Link</button>
+            <div class="role-card-qr-row">
+              <div class="role-card-qr" id="qr-${role}" title="Click to copy ${title} link"></div>
+              <a href="${shareHash}" class="role-card-link-text">${shareHash}</a>
             </div>
           `;
           roleCardsContainer.appendChild(card);
-        }
 
-        roleCardsContainer.querySelectorAll(".btn-copy-card-link").forEach(btn => {
-          btn.addEventListener("click", (e) => {
+          // Generate QR code in the container
+          const qrContainer = card.querySelector(`#qr-${role}`);
+          new QRCode(qrContainer, {
+            text: shareUrl,
+            width: 96,
+            height: 96,
+            colorDark: colors.dark,
+            colorLight: colors.light,
+            correctLevel: QRCode.CorrectLevel.M,
+          });
+
+          // Make the QR code clickable to copy
+          qrContainer.style.cursor = "pointer";
+          qrContainer.addEventListener("click", (e) => {
             e.preventDefault();
             e.stopPropagation();
-            navigator.clipboard.writeText(btn.getAttribute("data-link"));
-            showToast("Shareable link with hashtag copied to clipboard!", "info");
+            navigator.clipboard.writeText(shareUrl);
+            showToast(`${title} link copied to clipboard!`, "success");
           });
-        });
+        }
       }
 
       // Populate hash table
