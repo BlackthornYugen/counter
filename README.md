@@ -75,6 +75,28 @@ Build and push the multi-architecture container image for both ARM and x86 (`lin
 docker buildx build --platform linux/amd64,linux/arm64 -t git.tower.jskw.dev/webapps/counter:latest --push .
 ```
 
+### 4. Deploy / Update Remote Kubernetes Deployment
+
+The production counter deployment runs on Kubernetes in the `gitea` namespace with `imagePullPolicy: Always` (accessible at [https://counter.jskw.dev](https://counter.jskw.dev)).
+
+After pushing a new image tag, perform a zero-downtime rolling update with:
+
+```bash
+kubectl rollout restart deployment/counter -n gitea
+```
+
+Monitor rollout progress:
+
+```bash
+kubectl rollout status deployment/counter -n gitea
+```
+
+Verify deployment health:
+
+```bash
+curl -s https://counter.jskw.dev/health
+```
+
 ---
 
 ## 🐍 Programmatic Python API
