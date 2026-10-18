@@ -101,7 +101,7 @@
         <!-- Registration Result Table & Role Cards -->
         <div class="reg-result-box" id="reg-result">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <strong style="color:var(--accent-cyan); font-size:13px;">✓ Counter Registered</strong>
+            <strong style="color:var(--accent-cyan); font-size:13px;" id="res-box-title">✓ Counter Registered</strong>
             <span id="res-counter-id" style="font-family:var(--font-mono); font-size:11px; color:var(--text-dim);"></span>
           </div>
           
@@ -110,7 +110,7 @@
             <!-- Dynamically populated cards with #hashtag links -->
           </div>
 
-          <details style="margin-top:14px; font-size:12px; color:var(--text-muted); cursor:pointer;">
+          <details id="details-token-hashes" style="margin-top:14px; font-size:12px; color:var(--text-muted); cursor:pointer;">
             <summary style="font-weight:600; color:var(--text-dim); margin-bottom:6px;">View SHA-256 Hashes</summary>
             <table class="token-table">
               <thead>

@@ -390,6 +390,94 @@ function updateShareLinks(role, tokens) {
     } else {
       activeBar.style.display = "none";
     }
+function renderRoleCards(tokens, counterId = null) {
+  const regResult = document.getElementById("reg-result");
+  const roleCardsContainer = document.getElementById("reg-role-cards");
+  const counterIdEl = document.getElementById("res-counter-id");
+  const resBoxTitle = document.getElementById("res-box-title");
+
+  if (!tokens || Object.keys(tokens).length === 0) {
+    if (regResult) regResult.style.display = "none";
+    return;
+  }
+
+  if (regResult) {
+    regResult.style.display = "block";
+  }
+
+  if (resBoxTitle) {
+    resBoxTitle.textContent = "✓ Room Access & Share QR Codes";
+  }
+
+  if (counterIdEl && counterId) {
+    counterIdEl.textContent = `ID: ${counterId}`;
+  }
+
+  const detailsHashes = document.getElementById("details-token-hashes");
+  const tokenTableBody = document.getElementById("token-table-body");
+  if (detailsHashes) {
+    detailsHashes.style.display = (tokenTableBody && tokenTableBody.children.length > 0) ? "block" : "none";
+  }
+
+  if (!roleCardsContainer) return;
+  roleCardsContainer.innerHTML = "";
+
+  const possibleRoles = ["admin", "read_write", "read_only"];
+  for (const role of possibleRoles) {
+    const token = tokens[role];
+    if (!token) continue;
+    const icon = role === "admin" ? "👑" : (role === "read_write" ? "✍️" : "👁️");
+    const title = role === "admin" ? "Admin" : (role === "read_write" ? "Read-Write" : "Read-Only");
+    const desc = role === "admin" ? "Full Control" : (role === "read_write" ? "Write & Read" : "View Only");
+    const shareHash = buildShareHash(role, tokens, currentCounterLabel);
+    const shareUrl = `${window.location.origin}${window.location.pathname}${shareHash}`;
+
+    const card = document.createElement("div");
+    card.className = `role-link-card card-role-${role}`;
+
+    // QR code colours per role (dark, high-contrast role tints on clean white background)
+    const qrColors = {
+      admin: { dark: "#be123c", light: "#ffffff" },
+      read_write: { dark: "#6d28d9", light: "#ffffff" },
+      read_only: { dark: "#0e7490", light: "#ffffff" },
+    };
+    const colors = qrColors[role];
+
+    card.innerHTML = `
+      <div class="role-card-top">
+        <span class="role-card-badge">${icon} ${title}</span>
+        <span class="label-role-tag tag-${role === 'admin' ? 'admin' : (role === 'read_write' ? 'rw' : 'ro')}">${desc}</span>
+      </div>
+      <div class="role-card-qr-wrap">
+        <div class="role-card-qr" id="qr-${role}" title="Click to copy ${title} link" role="button" tabindex="0"></div>
+      </div>
+      <div class="role-card-copy-hint">📋 Click QR to copy link</div>
+    `;
+    roleCardsContainer.appendChild(card);
+
+    // Generate larger QR code with Level L for maximum module size and easy camera scanning
+    const qrContainer = card.querySelector(`#qr-${role}`);
+    new QRCode(qrContainer, {
+      text: shareUrl,
+      width: 180,
+      height: 180,
+      colorDark: colors.dark,
+      colorLight: colors.light,
+      correctLevel: QRCode.CorrectLevel.L,
+    });
+
+    // Make the QR code clickable to copy
+    qrContainer.style.cursor = "pointer";
+    const copyHandler = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      navigator.clipboard.writeText(shareUrl);
+      showToast(`${title} link copied to clipboard!`, "success");
+    };
+    qrContainer.addEventListener("click", copyHandler);
+    qrContainer.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") copyHandler(e);
+    });
   }
 }
 
@@ -519,6 +607,7 @@ async function handleLoadedUuids(uuids, updateHash = true, rawInput = null) {
     // Update share links & anchor
     const shareHash = buildShareHash(currentRole, activeTokens, currentCounterLabel);
     updateShareLinks(currentRole, activeTokens);
+    renderRoleCards(activeTokens, activeCounterId);
 
     if (updateHash && normalizeHash(window.location.hash) !== normalizeHash(shareHash)) {
       lastHandledHash = shareHash;
@@ -634,6 +723,7 @@ async function connectWithToken(token, updateHash = true, customLabel = null) {
     // Display active room hashtag link with lower level uuids and label
     const shareHash = buildShareHash(currentRole, activeTokens, currentCounterLabel);
     updateShareLinks(currentRole, activeTokens);
+    renderRoleCards(activeTokens, activeCounterId);
 
     // Update URL hashtag
     if (updateHash && shareHash && normalizeHash(window.location.hash) !== normalizeHash(shareHash)) {
@@ -975,72 +1065,13 @@ document.addEventListener("DOMContentLoaded", () => {
       const statusEl = document.getElementById("counter-room-status");
       if (statusEl) statusEl.textContent = currentCounterLabel;
 
-      // Populate registration summary box
-      document.getElementById("reg-result").style.display = "block";
-      document.getElementById("res-counter-id").textContent = `ID: ${data.counter_id}`;
-      
-      // Populate role link cards linking to share URLs with lower level tokens and label
-      const roleCardsContainer = document.getElementById("reg-role-cards");
-      if (roleCardsContainer) {
-        roleCardsContainer.innerHTML = "";
-        const roleList = currentMode === "3uuid" ? ["admin", "read_write", "read_only"] : ["admin", "read_only"];
-        for (const role of roleList) {
-          const token = data.roles[role];
-          if (!token) continue;
-          const icon = role === "admin" ? "👑" : (role === "read_write" ? "✍️" : "👁️");
-          const title = role === "admin" ? "Admin" : (role === "read_write" ? "Read-Write" : "Read-Only");
-          const desc = role === "admin" ? "Full Control" : (role === "read_write" ? "Write & Read" : "View Only");
-          const shareHash = buildShareHash(role, data.roles, currentCounterLabel);
-          const shareUrl = `${window.location.origin}${window.location.pathname}${shareHash}`;
+      // Populate role cards with QR codes
+      renderRoleCards(activeTokens, activeCounterId);
+      const resTitle = document.getElementById("res-box-title");
+      if (resTitle) resTitle.textContent = "✓ Counter Registered";
 
-          const card = document.createElement("div");
-          card.className = `role-link-card card-role-${role}`;
-
-          // QR code colours per role (dark, high-contrast role tints on clean white background)
-          const qrColors = {
-            admin: { dark: "#be123c", light: "#ffffff" },
-            read_write: { dark: "#6d28d9", light: "#ffffff" },
-            read_only: { dark: "#0e7490", light: "#ffffff" },
-          };
-          const colors = qrColors[role];
-
-          card.innerHTML = `
-            <div class="role-card-top">
-              <span class="role-card-badge">${icon} ${title}</span>
-              <span class="label-role-tag tag-${role === 'admin' ? 'admin' : (role === 'read_write' ? 'rw' : 'ro')}">${desc}</span>
-            </div>
-            <div class="role-card-qr-wrap">
-              <div class="role-card-qr" id="qr-${role}" title="Click to copy ${title} link" role="button" tabindex="0"></div>
-            </div>
-            <div class="role-card-copy-hint">📋 Click QR to copy link</div>
-          `;
-          roleCardsContainer.appendChild(card);
-
-          // Generate larger QR code with Level L for maximum module size and easy camera scanning
-          const qrContainer = card.querySelector(`#qr-${role}`);
-          new QRCode(qrContainer, {
-            text: shareUrl,
-            width: 180,
-            height: 180,
-            colorDark: colors.dark,
-            colorLight: colors.light,
-            correctLevel: QRCode.CorrectLevel.L,
-          });
-
-          // Make the QR code clickable to copy
-          qrContainer.style.cursor = "pointer";
-          const copyHandler = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            navigator.clipboard.writeText(shareUrl);
-            showToast(`${title} link copied to clipboard!`, "success");
-          };
-          qrContainer.addEventListener("click", copyHandler);
-          qrContainer.addEventListener("keydown", (e) => {
-            if (e.key === "Enter" || e.key === " ") copyHandler(e);
-          });
-        }
-      }
+      const detailsHashes = document.getElementById("details-token-hashes");
+      if (detailsHashes) detailsHashes.style.display = "block";
 
       // Populate hash table
       const tbody = document.getElementById("token-table-body");
