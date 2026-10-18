@@ -170,7 +170,17 @@ async def test_rest_counter_lifecycle_and_permissions():
 @pytest.mark.asyncio
 async def test_serve_privacy_route() -> None:
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        # Test /privacy
         res = await client.get("/privacy")
         assert res.status_code == 200
         assert "Privacy Policy" in res.text
+        assert "Core Operating Principles" in res.text
+        assert "Zero-Identity Synchronization" in res.text
+        assert "dev.jskw.counter" in res.text
+
+        # Test /privacy/
+        res_slash = await client.get("/privacy/")
+        assert res_slash.status_code == 200
+        assert "Privacy Policy" in res_slash.text
+
 

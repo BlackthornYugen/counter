@@ -730,7 +730,12 @@ document.addEventListener("DOMContentLoaded", () => {
   function getHashToken() {
     if (window.location.hash && window.location.hash.length > 1) {
       const raw = decodeURIComponent(window.location.hash.substring(1)).trim();
-      return raw.replace(/^[\/#]+/, "").trim();
+      const cleaned = raw.replace(/^[\/#]+/, "").trim();
+      if (cleaned.toLowerCase() === "privacy") {
+        window.location.href = "/privacy";
+        return null;
+      }
+      return cleaned;
     }
     return null;
   }
@@ -781,3 +786,5 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 });
+
+

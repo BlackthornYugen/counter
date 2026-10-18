@@ -44,11 +44,17 @@ app.mount("/web", StaticFiles(directory=str(STATIC_DIR)), name="web")
 
 
 @app.get("/", include_in_schema=False)
-@app.get("/privacy", include_in_schema=False)
-@app.get("/privacy/", include_in_schema=False)
 async def serve_index() -> FileResponse:
     index_file = STATIC_DIR / "index.html"
     return FileResponse(str(index_file))
+
+
+@app.get("/privacy", include_in_schema=False)
+@app.get("/privacy/", include_in_schema=False)
+async def serve_privacy() -> FileResponse:
+    return FileResponse(str(STATIC_DIR / "privacy" / "index.html"))
+
+
 
 
 
