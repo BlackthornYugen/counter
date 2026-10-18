@@ -13,5 +13,6 @@ if not default_web_dir.is_dir():
 
 STATIC_DIR = Path(os.environ.get("COUNTER_STATIC_DIR", str(default_web_dir)))
 HOST = os.environ.get("COUNTER_HOST", "0.0.0.0")
-PORT = int(os.environ.get("COUNTER_PORT", "8000"))
+PORT = int(os.environ.get("COUNTER_PORT", os.environ.get("PORT", "8000")))
+
 

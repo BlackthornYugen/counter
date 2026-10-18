@@ -184,3 +184,20 @@ async def test_serve_privacy_route() -> None:
         assert "Privacy Policy" in res_slash.text
 
 
+@pytest.mark.asyncio
+async def test_proxy_headers_and_custom_subpath() -> None:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        # Pass reverse proxy headers
+        headers = {
+            "x-forwarded-for": "203.0.113.195",
+            "x-forwarded-proto": "https",
+            "x-forwarded-host": "counter.staging.jskw.dev",
+            "x-forwarded-port": "443",
+            "x-forwarded-prefix": "/staging-counter",
+        }
+        res = await client.get("/health", headers=headers)
+        assert res.status_code == 200
+        assert res.json() == {"status": "ok", "service": "counter-server"}
+
+
+

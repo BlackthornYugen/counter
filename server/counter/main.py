@@ -1,10 +1,11 @@
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from counter.config import HOST, PORT, STATIC_DIR
 from counter.db import init_db
@@ -25,7 +26,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Enable CORS for browser access
+# Support reverse proxy headers for custom domains, SSL termination, and client IP
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+
+# Enable CORS for browser access from staging and production domains
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -33,6 +37,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def proxy_prefix_middleware(request: Request, call_next) -> Response:
+    """Handle X-Forwarded-Prefix for custom deployment subpaths (staging/prod)."""
+    prefix = request.headers.get("x-forwarded-prefix")
+    if prefix:
+        request.scope["root_path"] = prefix.rstrip("/")
+    return await call_next(request)
+
 
 # Mount API router
 app.include_router(api_router)
@@ -74,7 +88,15 @@ async def health_check() -> dict[str, str]:
 
 
 def run() -> None:
-    uvicorn.run("counter.main:app", host=HOST, port=PORT, reload=False)
+    uvicorn.run(
+        "counter.main:app",
+        host=HOST,
+        port=PORT,
+        reload=False,
+        proxy_headers=True,
+        forwarded_allow_ips="*",
+    )
+
 
 
 if __name__ == "__main__":
