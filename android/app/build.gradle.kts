@@ -30,7 +30,7 @@ android {
             }
         }
         debug {
-            buildConfigField("String", "API_BASE_URL", "\"http://192.168.87.234:9000\"")
+            buildConfigField("String", "API_BASE_URL", "\"https://counter.jskw.dev\"")
         }
     }
     compileOptions {
@@ -40,6 +40,9 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
     }
 }
 
@@ -80,9 +83,11 @@ dependencies {
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.kotlinx.json)
 
+    implementation(platform(libs.okhttpBom))
     implementation(libs.logging.interceptor)
     implementation(libs.moshi.kotlin)
     implementation(libs.okhttp)
+    implementation(libs.okhttpSse)
     implementation(libs.play.services.location)
     implementation(libs.retrofit)
     testImplementation(libs.androidx.core)

@@ -147,6 +147,17 @@ class CounterViewModelTest {
 
         val unpublished = viewModel.uiState.value.selectedCounter!!
         assertFalse(unpublished.isPublished)
+        assertEquals(published.viewUuid, unpublished.viewUuid)
+        assertEquals(published.updateUuid, unpublished.updateUuid)
+
+        // Toggle third time to republish
+        viewModel.togglePublishCounter(counterId)
+        advanceUntilIdle()
+
+        val republished = viewModel.uiState.value.selectedCounter!!
+        assertTrue(republished.isPublished)
+        assertEquals(published.viewUuid, republished.viewUuid)
+        assertEquals(published.updateUuid, republished.updateUuid)
     }
 
     @Test
@@ -164,5 +175,52 @@ class CounterViewModelTest {
         viewModel.showAddDialog(false)
         advanceUntilIdle()
         assertFalse(viewModel.uiState.value.showAddDialog)
+    }
+
+    @Test
+    fun testSyncPublishedCountersUpdatesCount() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.uiState.collect {}
+        }
+
+        viewModel.createCounter(title = "Sync Counter", initialCount = 10)
+        advanceUntilIdle()
+        val counterId = viewModel.uiState.value.selectedCounterId!!
+
+        viewModel.togglePublishCounter(counterId)
+        advanceUntilIdle()
+        assertEquals(10, viewModel.uiState.value.selectedCounter?.count)
+
+        // syncPublishedCounters will fetch live count (42 from fakeApi)
+        viewModel.syncPublishedCounters()
+        advanceUntilIdle()
+
+        assertEquals(42, viewModel.uiState.value.selectedCounter?.count)
+    }
+
+    @Test
+    fun testObserveRemoteCountDoesNotSetPublishingIds() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.uiState.collect {}
+        }
+
+        viewModel.createCounter(title = "Live Counter", initialCount = 10)
+        advanceUntilIdle()
+        val counterId = viewModel.uiState.value.selectedCounterId!!
+
+        viewModel.togglePublishCounter(counterId)
+        advanceUntilIdle()
+
+        viewModel.observeRemoteCount(counterId)
+        advanceUntilIdle()
+
+        // Verify observeRemoteCount does not put counter in publishingCounterIds
+        assertFalse(viewModel.uiState.value.publishingCounterIds.contains(counterId))
+
+        // Ensure user can toggle unpublish even while observing
+        viewModel.togglePublishCounter(counterId)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.selectedCounter!!.isPublished)
     }
 }

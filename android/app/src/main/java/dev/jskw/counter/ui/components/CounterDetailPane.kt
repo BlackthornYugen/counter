@@ -79,7 +79,7 @@ import dev.jskw.counter.ui.theme.CounterTheme
 @Composable
 fun CounterDetailPane(
     counter: Counter?,
-    isSyncing: Boolean,
+    isPublishing: Boolean = false,
     onIncrement: (String) -> Unit,
     onDecrement: (String) -> Unit,
     onTogglePin: (String) -> Unit,
@@ -380,7 +380,7 @@ fun CounterDetailPane(
                             }
                         }
 
-                        if (isSyncing) {
+                        if (isPublishing) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(28.dp),
                                 strokeWidth = 2.dp
@@ -491,7 +491,7 @@ fun CounterDetailPanePreview() {
     CounterTheme {
         CounterDetailPane(
             counter = sampleCounter,
-            isSyncing = false,
+            isPublishing = false,
             onIncrement = {},
             onDecrement = {},
             onTogglePin = {},

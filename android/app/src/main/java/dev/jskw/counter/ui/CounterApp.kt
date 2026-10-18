@@ -1,7 +1,6 @@
 package dev.jskw.counter.ui
 
 import android.Manifest
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.BackHandler
@@ -25,8 +24,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import dev.jskw.counter.service.PinnedCounterService
+import dev.jskw.counter.notification.PinnedCounterNotifier
 import dev.jskw.counter.ui.components.AddCounterDialog
 import dev.jskw.counter.ui.components.CounterDetailPane
 import dev.jskw.counter.ui.components.CounterListPane
@@ -64,18 +66,32 @@ fun CounterApp(
         }
 
         viewModel.togglePin(counterId)
-
-        if (willBePinned) {
-            val serviceIntent = Intent(context, PinnedCounterService::class.java)
-            ContextCompat.startForegroundService(context, serviceIntent)
-        }
     }
 
-    val hasPinnedCounters = uiState.counters.any { it.isPinned }
-    LaunchedEffect(hasPinnedCounters) {
-        if (hasPinnedCounters) {
-            val serviceIntent = Intent(context, PinnedCounterService::class.java)
-            ContextCompat.startForegroundService(context, serviceIntent)
+    val pinnedCounters = remember(uiState.counters) {
+        uiState.counters.filter { it.isPinned }
+    }
+
+    LaunchedEffect(pinnedCounters) {
+        PinnedCounterNotifier.updateNotification(context, pinnedCounters)
+    }
+
+    // Check status and sync published counters when user opens or resumes the app
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        viewModel.syncPublishedCounters()
+    }
+
+    // Stream SSE events only while the app is actively in the foreground
+    LifecycleResumeEffect(pinnedCounters, uiState.selectedCounterId, uiState.selectedCounter?.isPublished) {
+        viewModel.observePinnedPublishedCounters(pinnedCounters)
+        val selected = uiState.selectedCounter
+        if (selected != null && selected.isPublished) {
+            viewModel.observeRemoteCount(selected.id)
+        } else {
+            viewModel.stopObservingRemoteCount()
+        }
+        onPauseOrDispose {
+            viewModel.stopAllRemoteObservations()
         }
     }
 
@@ -124,19 +140,11 @@ fun CounterApp(
             },
             detailPane = {
                 val selectedCounter = uiState.selectedCounter
-                val isSyncing = selectedCounter?.let { uiState.syncingCounterIds.contains(it.id) } ?: false
-
-                LaunchedEffect(selectedCounter?.id) {
-                    if (selectedCounter != null && selectedCounter.isPublished) {
-                        viewModel.observeRemoteCount(selectedCounter.id)
-                    } else {
-                        viewModel.stopObservingRemoteCount()
-                    }
-                }
+                val isPublishing = selectedCounter?.let { uiState.publishingCounterIds.contains(it.id) } ?: false
 
                 CounterDetailPane(
                     counter = selectedCounter,
-                    isSyncing = isSyncing,
+                    isPublishing = isPublishing,
                     onIncrement = { viewModel.incrementCounter(it) },
                     onDecrement = { viewModel.decrementCounter(it) },
                     onTogglePin = { counterId ->

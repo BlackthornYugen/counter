@@ -14,8 +14,8 @@ interface CounterRepository {
     suspend fun updateCounter(counter: Counter)
     suspend fun updatePinnedStatus(id: String, isPinned: Boolean): Counter?
     suspend fun togglePin(id: String): Counter?
-    suspend fun publishCounter(id: String): Counter?
-    suspend fun unpublishCounter(id: String): Counter?
+    suspend fun publishCounter(id: String): Result<Counter>
+    suspend fun unpublishCounter(id: String): Result<Counter>
     suspend fun syncRemoteCount(id: String): Result<Counter>
     fun observeRemoteCount(id: String): Flow<Result<Counter>>
 }

@@ -76,9 +76,9 @@ class FakeCounterApiService : CounterApiService {
         readWriteUuid: String?,
         adminUuid: String?
     ): Result<RegisterResponse> {
-        publishedViewUuid = readOnlyUuid ?: "view-uuid"
-        publishedManagementUuid = readWriteUuid ?: "update-uuid"
-        val resolvedAdmin = adminUuid ?: "delete-uuid"
+        publishedViewUuid = readOnlyUuid ?: java.util.UUID.randomUUID().toString()
+        publishedManagementUuid = readWriteUuid ?: java.util.UUID.randomUUID().toString()
+        val resolvedAdmin = adminUuid ?: java.util.UUID.randomUUID().toString()
         return Result.success(
             RegisterResponse(
                 counter_id = "test",
@@ -170,7 +170,7 @@ class CounterRepositoryTest {
     @Test
     fun testPublishGeneratesUuidsAndUpdatesRemote() = runTest {
         val counter = repository.createCounter(title = "Live Counter", initialCount = 3)
-        val published = repository.publishCounter(counter.id)
+        val published = repository.publishCounter(counter.id).getOrNull()
 
         assertNotNull(published)
         assertTrue(published!!.isPublished)
@@ -185,7 +185,7 @@ class CounterRepositoryTest {
     @Test
     fun testDeleteCounter() = runTest {
         val counter = repository.createCounter(title = "Delete Me", initialCount = 1)
-        val published = repository.publishCounter(counter.id)
+        val published = repository.publishCounter(counter.id).getOrNull()
         assertNotNull(published)
 
         repository.deleteCounter(published!!.id)
@@ -193,5 +193,34 @@ class CounterRepositoryTest {
         assertEquals(published.deleteUuid, fakeApi.deletedUuid)
         val deleted = repository.getCounterById(published.id)
         assertEquals(null, deleted)
+    }
+
+    @Test
+    fun testRepublishPreservesUuids() = runTest {
+        val counter = repository.createCounter(title = "Republish Counter", initialCount = 7)
+        val published = repository.publishCounter(counter.id).getOrNull()
+        assertNotNull(published)
+        assertTrue(published!!.isPublished)
+
+        val originalViewUuid = published.viewUuid
+        val originalUpdateUuid = published.updateUuid
+        val originalDeleteUuid = published.deleteUuid
+        assertNotNull(originalViewUuid)
+        assertNotNull(originalUpdateUuid)
+        assertNotNull(originalDeleteUuid)
+
+        val unpublished = repository.unpublishCounter(counter.id).getOrNull()
+        assertNotNull(unpublished)
+        assertFalse(unpublished!!.isPublished)
+        assertEquals(originalViewUuid, unpublished.viewUuid)
+        assertEquals(originalUpdateUuid, unpublished.updateUuid)
+        assertEquals(originalDeleteUuid, unpublished.deleteUuid)
+
+        val republished = repository.publishCounter(counter.id).getOrNull()
+        assertNotNull(republished)
+        assertTrue(republished!!.isPublished)
+        assertEquals(originalViewUuid, republished.viewUuid)
+        assertEquals(originalUpdateUuid, republished.updateUuid)
+        assertEquals(originalDeleteUuid, republished.deleteUuid)
     }
 }
