@@ -314,6 +314,17 @@ body {
   border-color: var(--border-hover);
 }
 
+.text-blurred {
+  filter: blur(5px);
+  user-select: none;
+  opacity: 0.85;
+  transition: filter 0.15s ease, opacity 0.15s ease;
+}
+
+.btn-toggle-input {
+  min-width: 38px;
+}
+
 /* Primary Action Buttons */
 .btn-primary {
   width: 100%;

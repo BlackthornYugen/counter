@@ -27,6 +27,133 @@ function generateUUID() {
   });
 }
 
+// --- Obfuscation & Privacy Helpers ---
+
+function generateGibberishUUID() {
+  const chars = "0123456789abcdef";
+  const seg = (len) => Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+  return `${seg(8)}-${seg(4)}-4${seg(3)}-a${seg(3)}-${seg(12)}`;
+}
+
+function obfuscateHashString(hashStr, keepReadOnly = true) {
+  if (!hashStr) return "";
+  return hashStr.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, (match, offset, fullStr) => {
+    const before = fullStr.substring(Math.max(0, offset - 6), offset);
+    if (keepReadOnly && before.toLowerCase().includes("read")) {
+      return match;
+    }
+    return generateGibberishUUID();
+  });
+}
+
+const managedInputs = {
+  "reg-ro-uuid": { defaultHidden: false, toggleId: "toggle-vis-reg-ro" },
+  "reg-rw-uuid": { defaultHidden: true, toggleId: "toggle-vis-reg-rw" },
+  "reg-admin-uuid": { defaultHidden: true, toggleId: "toggle-vis-reg-admin" },
+  "input-connect-uuid": { defaultHidden: true, toggleId: "toggle-vis-connect" },
+};
+
+function setManagedInput(id, realValue, forceHidden = null) {
+  const input = document.getElementById(id);
+  if (!input) return;
+
+  const cfg = managedInputs[id] || { defaultHidden: false };
+  input.dataset.realValue = realValue || "";
+
+  if (!realValue) {
+    input.value = "";
+    input.dataset.fakeValue = "";
+    input.classList.remove("text-blurred");
+    const toggleBtn = document.getElementById(cfg.toggleId);
+    if (toggleBtn) {
+      toggleBtn.innerHTML = cfg.defaultHidden ? "👁️" : "🔒";
+      toggleBtn.title = cfg.defaultHidden ? "Reveal UUID" : "Hide UUID";
+    }
+    return;
+  }
+
+  input.dataset.fakeValue = generateGibberishUUID();
+  const shouldHide = forceHidden !== null ? forceHidden : (input.dataset.hidden !== undefined ? input.dataset.hidden === "true" : cfg.defaultHidden);
+  input.dataset.hidden = shouldHide ? "true" : "false";
+
+  updateManagedInputUI(id);
+}
+
+function updateManagedInputUI(id) {
+  const input = document.getElementById(id);
+  if (!input) return;
+  const cfg = managedInputs[id] || { defaultHidden: false };
+  const toggleBtn = document.getElementById(cfg.toggleId);
+  const isHidden = input.dataset.hidden === "true";
+  const realVal = input.dataset.realValue || "";
+  const fakeVal = input.dataset.fakeValue || generateGibberishUUID();
+
+  if (isHidden && realVal) {
+    input.value = fakeVal;
+    input.classList.add("text-blurred");
+    if (toggleBtn) {
+      toggleBtn.innerHTML = "👁️";
+      toggleBtn.title = "Reveal UUID";
+    }
+  } else {
+    input.value = realVal;
+    input.classList.remove("text-blurred");
+    if (toggleBtn) {
+      toggleBtn.innerHTML = "🔒";
+      toggleBtn.title = "Hide UUID";
+    }
+  }
+}
+
+function getManagedInputValue(id) {
+  const input = document.getElementById(id);
+  if (!input) return "";
+  if (input.dataset.realValue !== undefined && input.dataset.realValue !== "") {
+    return input.dataset.realValue.trim();
+  }
+  return input.value.trim();
+}
+
+function toggleManagedInput(id) {
+  const input = document.getElementById(id);
+  if (!input) return;
+  const isHidden = input.dataset.hidden === "true";
+  input.dataset.hidden = isHidden ? "false" : "true";
+  updateManagedInputUI(id);
+  showToast(isHidden ? "UUID revealed." : "UUID hidden with gibberish.", "info");
+}
+
+function initManagedInputs() {
+  for (const [id, cfg] of Object.entries(managedInputs)) {
+    const input = document.getElementById(id);
+    const toggleBtn = document.getElementById(cfg.toggleId);
+    if (input) {
+      input.addEventListener("input", () => {
+        input.dataset.realValue = input.value;
+        input.dataset.hidden = "false";
+        input.classList.remove("text-blurred");
+        if (toggleBtn) {
+          toggleBtn.innerHTML = "🔒";
+          toggleBtn.title = "Hide UUID";
+        }
+      });
+      input.addEventListener("focus", () => {
+        if (input.dataset.hidden === "true") {
+          input.dataset.hidden = "false";
+          updateManagedInputUI(id);
+        }
+      });
+    }
+    if (toggleBtn) {
+      toggleBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleManagedInput(id);
+      });
+    }
+  }
+}
+
 function showToast(message, type = "info") {
   const container = document.getElementById("toast-container");
   const toast = document.createElement("div");
@@ -378,19 +505,66 @@ function buildShareHash(role, tokens, customLabel = null) {
 }
 
 function updateShareLinks(role, tokens) {
-  const shareHash = buildShareHash(role, tokens);
+  const shareHash = buildShareHash(role, tokens, currentCounterLabel);
   const activeBar = document.getElementById("active-link-bar");
   const activeAnchor = document.getElementById("active-hashtag-anchor");
-  if (activeBar && activeAnchor) {
-    if (shareHash) {
-      activeBar.style.display = "flex";
-      activeAnchor.href = shareHash;
-      activeAnchor.textContent = shareHash;
-      activeAnchor.title = `Current room share link (${role})`;
-    } else {
-      activeBar.style.display = "none";
+
+  if (!activeBar || !activeAnchor) return;
+
+  if (!shareHash) {
+    activeBar.style.display = "none";
+    return;
+  }
+
+  activeBar.style.display = "flex";
+  activeAnchor.dataset.realHash = shareHash;
+  activeAnchor.dataset.fakeHash = obfuscateHashString(shareHash, false);
+
+  // Admin and Read-Write are hidden by default; Read-Only is visible by default
+  if (activeAnchor.dataset.hidden === undefined) {
+    activeAnchor.dataset.hidden = (role === "admin" || role === "read_write") ? "true" : "false";
+  }
+
+  updateActiveLinkUI();
+}
+
+function updateActiveLinkUI() {
+  const activeAnchor = document.getElementById("active-hashtag-anchor");
+  const toggleBtn = document.getElementById("toggle-vis-active-link");
+  if (!activeAnchor) return;
+
+  const isHidden = activeAnchor.dataset.hidden === "true";
+  const realHash = activeAnchor.dataset.realHash || "";
+  const fakeHash = activeAnchor.dataset.fakeHash || obfuscateHashString(realHash, false);
+
+  if (isHidden) {
+    activeAnchor.textContent = fakeHash;
+    activeAnchor.href = "#";
+    activeAnchor.classList.add("text-blurred");
+    activeAnchor.title = "Room link hidden (Click 👁️ to reveal)";
+    if (toggleBtn) {
+      toggleBtn.innerHTML = "👁️";
+      toggleBtn.title = "Reveal Room Link";
+    }
+  } else {
+    activeAnchor.textContent = realHash;
+    activeAnchor.href = realHash;
+    activeAnchor.classList.remove("text-blurred");
+    activeAnchor.title = "Current room hashtag link";
+    if (toggleBtn) {
+      toggleBtn.innerHTML = "🔒";
+      toggleBtn.title = "Hide Room Link";
     }
   }
+}
+
+function toggleActiveLinkVisibility() {
+  const activeAnchor = document.getElementById("active-hashtag-anchor");
+  if (!activeAnchor) return;
+  const isHidden = activeAnchor.dataset.hidden === "true";
+  activeAnchor.dataset.hidden = isHidden ? "false" : "true";
+  updateActiveLinkUI();
+  showToast(isHidden ? "Room link revealed." : "Room link hidden with gibberish.", "info");
 }
 
 function renderRoleCards(tokens, counterId = null) {
@@ -602,16 +776,16 @@ async function handleLoadedUuids(uuids, updateHash = true, rawInput = null) {
 
     // Fill in register box
     if (resolvedRoles.read_only) {
-      document.getElementById("reg-ro-uuid").value = resolvedRoles.read_only;
+      setManagedInput("reg-ro-uuid", resolvedRoles.read_only, false);
     }
     if (resolvedRoles.read_write) {
-      document.getElementById("reg-rw-uuid").value = resolvedRoles.read_write;
+      setManagedInput("reg-rw-uuid", resolvedRoles.read_write, true);
       currentMode = "3uuid";
       document.getElementById("btn-mode-3uuid").classList.add("active");
       document.getElementById("btn-mode-2uuid").classList.remove("active");
       document.getElementById("group-rw-uuid").style.display = "block";
     } else {
-      document.getElementById("reg-rw-uuid").value = "";
+      setManagedInput("reg-rw-uuid", "");
       if (resolvedRoles.read_only && resolvedRoles.admin) {
         currentMode = "2uuid";
         document.getElementById("btn-mode-2uuid").classList.add("active");
@@ -620,7 +794,7 @@ async function handleLoadedUuids(uuids, updateHash = true, rawInput = null) {
       }
     }
     if (resolvedRoles.admin) {
-      document.getElementById("reg-admin-uuid").value = resolvedRoles.admin;
+      setManagedInput("reg-admin-uuid", resolvedRoles.admin, true);
     }
 
     // Determine highest privilege role to connect as: admin > read_write > read_only
@@ -628,7 +802,7 @@ async function handleLoadedUuids(uuids, updateHash = true, rawInput = null) {
     const connectToken = resolvedRoles[connectRole];
 
     // Fill in view client box
-    document.getElementById("input-connect-uuid").value = connectToken;
+    setManagedInput("input-connect-uuid", connectToken, connectRole !== "read_only");
 
     activeCounterId = counterId;
     currentRole = connectRole;
@@ -698,13 +872,14 @@ async function handleLoadedUuids(uuids, updateHash = true, rawInput = null) {
     }
 
     // Fill in register box
-    if (resolvedRoles.read_only) document.getElementById("reg-ro-uuid").value = resolvedRoles.read_only;
-    if (resolvedRoles.read_write) document.getElementById("reg-rw-uuid").value = resolvedRoles.read_write;
-    if (resolvedRoles.admin) document.getElementById("reg-admin-uuid").value = resolvedRoles.admin;
+    if (resolvedRoles.read_only) setManagedInput("reg-ro-uuid", resolvedRoles.read_only, false);
+    if (resolvedRoles.read_write) setManagedInput("reg-rw-uuid", resolvedRoles.read_write, true);
+    if (resolvedRoles.admin) setManagedInput("reg-admin-uuid", resolvedRoles.admin, true);
 
     // Fill in view client box
     const connectUuid = resolvedRoles.admin || resolvedRoles.read_write || resolvedRoles.read_only || uuids[0];
-    document.getElementById("input-connect-uuid").value = connectUuid;
+    const isConnectRo = !resolvedRoles.admin && !resolvedRoles.read_write;
+    setManagedInput("input-connect-uuid", connectUuid, !isConnectRo);
 
     const statusEl = document.getElementById("counter-room-status");
     if (statusEl) statusEl.textContent = currentCounterLabel || "Unregistered Counter";
@@ -752,14 +927,14 @@ async function connectWithToken(token, updateHash = true, customLabel = null) {
 
     // Fill in register box for this role
     if (currentRole === "admin") {
-      document.getElementById("reg-admin-uuid").value = cleaned;
+      setManagedInput("reg-admin-uuid", cleaned, true);
     } else if (currentRole === "read_write") {
-      document.getElementById("reg-rw-uuid").value = cleaned;
+      setManagedInput("reg-rw-uuid", cleaned, true);
     } else if (currentRole === "read_only") {
-      document.getElementById("reg-ro-uuid").value = cleaned;
+      setManagedInput("reg-ro-uuid", cleaned, false);
     }
 
-    document.getElementById("input-connect-uuid").value = cleaned;
+    setManagedInput("input-connect-uuid", cleaned, currentRole !== "read_only");
     const statusEl = document.getElementById("counter-room-status");
     if (statusEl) statusEl.textContent = currentCounterLabel;
     updateCounterDisplay(data.value);
@@ -798,7 +973,7 @@ async function connectWithToken(token, updateHash = true, customLabel = null) {
 }
 
 function connectRoom() {
-  const token = activeTokens[currentRole] || document.getElementById("input-connect-uuid").value.trim();
+  const token = activeTokens[currentRole] || getManagedInputValue("input-connect-uuid");
   if (!token) {
     showToast("Please enter an access UUID or register a counter first.", "error");
     return;
@@ -930,7 +1105,7 @@ async function sendCounterAction(action, delta = 1) {
 }
 
 async function deleteCounterRoom() {
-  const token = activeTokens[currentRole] || document.getElementById("input-connect-uuid").value.trim();
+  const token = activeTokens[currentRole] || getManagedInputValue("input-connect-uuid");
   if (!token) {
     showToast("No active room to delete.", "error");
     return;
@@ -1012,17 +1187,36 @@ function initSimulator() {
 // --- Event Listeners and Initialization ---
 
 document.addEventListener("DOMContentLoaded", () => {
+  initManagedInputs();
+
+  const toggleActiveLinkBtn = document.getElementById("toggle-vis-active-link");
+  if (toggleActiveLinkBtn) {
+    toggleActiveLinkBtn.addEventListener("click", () => {
+      toggleActiveLinkVisibility();
+    });
+  }
+
+  const activeAnchorEl = document.getElementById("active-hashtag-anchor");
+  if (activeAnchorEl) {
+    activeAnchorEl.addEventListener("click", (e) => {
+      if (activeAnchorEl.dataset.hidden === "true") {
+        e.preventDefault();
+        toggleActiveLinkVisibility();
+      }
+    });
+  }
+
   // Inputs start empty on load; users can click the generator buttons when needed
 
   // "Generate All" button
   const btnGenAll = document.getElementById("btn-gen-all");
   if (btnGenAll) {
     btnGenAll.addEventListener("click", () => {
-      document.getElementById("reg-ro-uuid").value = generateUUID();
+      setManagedInput("reg-ro-uuid", generateUUID(), false);
       if (currentMode === "3uuid") {
-        document.getElementById("reg-rw-uuid").value = generateUUID();
+        setManagedInput("reg-rw-uuid", generateUUID(), false);
       }
-      document.getElementById("reg-admin-uuid").value = generateUUID();
+      setManagedInput("reg-admin-uuid", generateUUID(), false);
       showToast("Generated new UUIDv4 tokens for all fields.", "info");
     });
   }
@@ -1049,22 +1243,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Individual UUID generator buttons
   document.getElementById("gen-ro-uuid").addEventListener("click", () => {
-    document.getElementById("reg-ro-uuid").value = generateUUID();
+    setManagedInput("reg-ro-uuid", generateUUID(), false);
   });
   document.getElementById("gen-rw-uuid").addEventListener("click", () => {
-    document.getElementById("reg-rw-uuid").value = generateUUID();
+    setManagedInput("reg-rw-uuid", generateUUID(), false);
   });
   document.getElementById("gen-admin-uuid").addEventListener("click", () => {
-    document.getElementById("reg-admin-uuid").value = generateUUID();
+    setManagedInput("reg-admin-uuid", generateUUID(), false);
   });
 
   const UUIDV4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
   // Register Form Submit
   document.getElementById("btn-register").addEventListener("click", async () => {
-    const ro = document.getElementById("reg-ro-uuid").value.trim();
-    const admin = document.getElementById("reg-admin-uuid").value.trim();
-    const rw = currentMode === "3uuid" ? document.getElementById("reg-rw-uuid").value.trim() : null;
+    const ro = getManagedInputValue("reg-ro-uuid");
+    const admin = getManagedInputValue("reg-admin-uuid");
+    const rw = currentMode === "3uuid" ? getManagedInputValue("reg-rw-uuid") : null;
 
     if (!ro || !admin || (currentMode === "3uuid" && !rw)) {
       showToast("Please fill in all UUID fields (or click 🎲 to generate).", "error");
@@ -1101,7 +1295,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!res.ok) {
         if (res.status === 409) {
           showToast(data.detail || "UUID already registered. Connect to the room using this UUID.", "error");
-          document.getElementById("input-connect-uuid").value = admin;
+          setManagedInput("input-connect-uuid", admin, true);
         } else {
           showToast(data.detail || "Registration failed.", "error");
         }
@@ -1129,16 +1323,41 @@ document.addEventListener("DOMContentLoaded", () => {
       for (const [role, token] of Object.entries(data.roles)) {
         const hash = data.token_hashes[role];
         const shareHash = buildShareHash(role, data.roles, currentCounterLabel);
+        let isHidden = (role === "admin" || role === "read_write");
+        const fakeHash = obfuscateHashString(shareHash, false);
+
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td><span class="label-role-tag tag-${role === 'admin' ? 'admin' : (role === 'read_write' ? 'rw' : 'ro')}">${role}</span></td>
-          <td class="code-cell" title="${shareHash}"><a href="${shareHash}" style="color:var(--text-main); text-decoration:none;">${shareHash}</a></td>
+          <td class="code-cell" style="display:flex; align-items:center; gap:6px;">
+            <button type="button" class="btn-icon btn-toggle-table" data-role="${role}" title="${isHidden ? 'Reveal' : 'Hide'}" style="height:22px; width:22px; padding:0; font-size:11px;">
+              ${isHidden ? '👁️' : '🔒'}
+            </button>
+            <span class="table-token-text ${isHidden ? 'text-blurred' : ''}">${isHidden ? fakeHash : shareHash}</span>
+          </td>
           <td class="code-cell" title="${hash}">${hash.substring(0, 16)}...</td>
           <td>
             <button type="button" class="btn-secondary copy-btn" data-copy="${shareHash}" style="padding:2px 8px; font-size:11px;">Copy</button>
           </td>
         `;
         tbody.appendChild(tr);
+
+        const toggleBtn = tr.querySelector(".btn-toggle-table");
+        const textSpan = tr.querySelector(".table-token-text");
+        toggleBtn.addEventListener("click", () => {
+          isHidden = !isHidden;
+          if (isHidden) {
+            textSpan.textContent = fakeHash;
+            textSpan.classList.add("text-blurred");
+            toggleBtn.innerHTML = "👁️";
+            toggleBtn.title = "Reveal";
+          } else {
+            textSpan.textContent = shareHash;
+            textSpan.classList.remove("text-blurred");
+            toggleBtn.innerHTML = "🔒";
+            toggleBtn.title = "Hide";
+          }
+        });
       }
 
       tbody.querySelectorAll(".copy-btn").forEach(btn => {
@@ -1155,7 +1374,7 @@ document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("chip-ro").style.display = activeTokens.read_only ? "inline-flex" : "none";
 
       // Connect to live room using the admin token and update hashtag
-      document.getElementById("input-connect-uuid").value = data.roles.admin;
+      setManagedInput("input-connect-uuid", data.roles.admin, true);
       currentRole = "admin";
       const adminShareHash = buildShareHash("admin", activeTokens, currentCounterLabel);
       lastHandledHash = adminShareHash;
@@ -1171,7 +1390,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Connect With Existing UUID Button
   document.getElementById("btn-connect-uuid").addEventListener("click", () => {
-    const val = document.getElementById("input-connect-uuid").value.trim();
+    const val = getManagedInputValue("input-connect-uuid");
     const uuids = parseAnchorUuids(val);
     if (uuids.length > 0) {
       const parsedLabel = parseAnchorLabel(val);
@@ -1184,7 +1403,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("input-connect-uuid").addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
-      const val = document.getElementById("input-connect-uuid").value.trim();
+      const val = getManagedInputValue("input-connect-uuid");
       const uuids = parseAnchorUuids(val);
       if (uuids.length > 0) {
         const parsedLabel = parseAnchorLabel(val);
@@ -1223,7 +1442,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const shareHash = buildShareHash(role, activeTokens, currentCounterLabel);
       lastHandledHash = shareHash;
       window.location.hash = shareHash;
-      document.getElementById("input-connect-uuid").value = token;
+      setManagedInput("input-connect-uuid", token, role !== "read_only");
       connectWithToken(token, false, currentCounterLabel);
       updateShareLinks(role, activeTokens);
     }
@@ -1262,9 +1481,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnCopyActive = document.getElementById("btn-copy-active-link");
   if (btnCopyActive) {
     btnCopyActive.addEventListener("click", () => {
-      const shareHash = buildShareHash(currentRole, activeTokens, currentCounterLabel);
-      if (shareHash) {
-        const fullUrl = `${window.location.origin}${window.location.pathname}${shareHash}`;
+      const activeAnchor = document.getElementById("active-hashtag-anchor");
+      const realHash = (activeAnchor && activeAnchor.dataset.realHash) || buildShareHash(currentRole, activeTokens, currentCounterLabel);
+      if (realHash) {
+        const fullUrl = `${window.location.origin}${window.location.pathname}${realHash}`;
         navigator.clipboard.writeText(fullUrl);
         showToast("Room share link with hashtag copied to clipboard!", "info");
       }

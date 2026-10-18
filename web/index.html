@@ -67,6 +67,7 @@
             </label>
             <div class="input-with-action">
               <input type="text" id="reg-ro-uuid" class="text-input" placeholder="e.g. c768f56e-8ff4-4363-8822-79ee8ca6eef4">
+              <button type="button" class="btn-icon btn-toggle-input" id="toggle-vis-reg-ro" title="Hide/Reveal UUID">🔒</button>
               <button type="button" class="btn-icon" title="Generate UUID" id="gen-ro-uuid">🎲</button>
             </div>
           </div>
@@ -78,6 +79,7 @@
             </label>
             <div class="input-with-action">
               <input type="text" id="reg-rw-uuid" class="text-input" placeholder="e.g. e2244bb4-0997-4ef8-8280-9dfbf2ba1022">
+              <button type="button" class="btn-icon btn-toggle-input" id="toggle-vis-reg-rw" title="Hide/Reveal UUID">👁️</button>
               <button type="button" class="btn-icon" title="Generate UUID" id="gen-rw-uuid">🎲</button>
             </div>
           </div>
@@ -89,6 +91,7 @@
             </label>
             <div class="input-with-action">
               <input type="text" id="reg-admin-uuid" class="text-input" placeholder="e.g. 523a8867-b50a-4a25-a1c1-40c42be279ab">
+              <button type="button" class="btn-icon btn-toggle-input" id="toggle-vis-reg-admin" title="Hide/Reveal UUID">👁️</button>
               <button type="button" class="btn-icon" title="Generate UUID" id="gen-admin-uuid">🎲</button>
             </div>
           </div>
@@ -149,6 +152,7 @@
           </label>
           <div class="input-with-action">
             <input type="text" id="input-connect-uuid" class="text-input" placeholder="Paste Read-Only, Read-Write, or Admin UUID...">
+            <button type="button" class="btn-icon btn-toggle-input" id="toggle-vis-connect" title="Hide/Reveal UUID">👁️</button>
             <button type="button" class="btn-primary" id="btn-connect-uuid" style="width: auto; padding: 0 18px; font-size: 13px;">
               Connect
             </button>
@@ -180,6 +184,7 @@
           <div class="active-link-info">
             <span style="font-size:11px; color:var(--text-dim); text-transform:uppercase;">Room Link:</span>
             <a href="#" id="active-hashtag-anchor" class="active-hashtag-anchor" title="Current room hashtag link">#</a>
+            <button type="button" class="btn-icon" id="toggle-vis-active-link" title="Hide/Reveal Room Link" style="height: 24px; padding: 0 6px; font-size: 11px;">👁️</button>
           </div>
           <button type="button" class="btn-copy-active-link" id="btn-copy-active-link" title="Copy shareable link with hashtag">
             📋 Copy Share Link
