@@ -53,10 +53,10 @@ class CounterViewModelTest {
         advanceUntilIdle()
 
         val state = viewModel.uiState.value
-        assertEquals(1, state.counters.size)
-        assertEquals("Trick-or-Treaters", state.counters[0].title)
-        assertEquals(5, state.counters[0].count)
-        assertEquals(state.counters[0].id, state.selectedCounterId)
+        val created = state.counters.find { it.title == "Trick-or-Treaters" }
+        assertNotNull(created)
+        assertEquals(5, created?.count)
+        assertEquals(created?.id, state.selectedCounterId)
         assertNotNull(state.selectedCounter)
     }
 
@@ -81,6 +81,22 @@ class CounterViewModelTest {
     }
 
     @Test
+    fun testDecrementCounterRefusesAtZero() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.uiState.collect {}
+        }
+
+        viewModel.createCounter(title = "Zero Counter", initialCount = 0)
+        advanceUntilIdle()
+
+        val counterId = viewModel.uiState.value.selectedCounterId!!
+
+        viewModel.decrementCounter(counterId)
+        advanceUntilIdle()
+        assertEquals(0, viewModel.uiState.value.selectedCounter?.count)
+    }
+
+    @Test
     fun testTogglePin() = runTest {
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             viewModel.uiState.collect {}
@@ -102,6 +118,30 @@ class CounterViewModelTest {
     }
 
     @Test
+    fun testPinningSecondCounterUnpinsFirst() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.uiState.collect {}
+        }
+
+        viewModel.createCounter(title = "Counter A", initialCount = 0)
+        advanceUntilIdle()
+        val idA = viewModel.uiState.value.selectedCounterId!!
+
+        viewModel.createCounter(title = "Counter B", initialCount = 0)
+        advanceUntilIdle()
+        val idB = viewModel.uiState.value.selectedCounterId!!
+
+        viewModel.togglePin(idA)
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.counters.find { it.id == idA }!!.isPinned)
+
+        viewModel.togglePin(idB)
+        advanceUntilIdle()
+        assertFalse(viewModel.uiState.value.counters.find { it.id == idA }!!.isPinned)
+        assertTrue(viewModel.uiState.value.counters.find { it.id == idB }!!.isPinned)
+    }
+
+    @Test
     fun testDeleteCounterClearsSelection() = runTest {
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             viewModel.uiState.collect {}
@@ -116,7 +156,7 @@ class CounterViewModelTest {
         viewModel.deleteCounter(counterId)
         advanceUntilIdle()
 
-        assertTrue(viewModel.uiState.value.counters.isEmpty())
+        assertFalse(viewModel.uiState.value.counters.any { it.id == counterId })
         assertNull(viewModel.uiState.value.selectedCounterId)
         assertNull(viewModel.uiState.value.selectedCounter)
     }

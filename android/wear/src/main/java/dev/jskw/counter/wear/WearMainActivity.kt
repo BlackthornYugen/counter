@@ -230,13 +230,16 @@ fun CounterPage(counter: WearCounter) {
             ) {
                 IconButton(
                     onClick = {
-                        showTitle = true
-                        WearCounterSync.sendActionFromWatch(
-                            context = context,
-                            action = WearCounterSync.ACTION_DECREMENT,
-                            counterId = counter.id
-                        )
-                    }
+                        if (counter.count > 0) {
+                            showTitle = true
+                            WearCounterSync.sendActionFromWatch(
+                                context = context,
+                                action = WearCounterSync.ACTION_DECREMENT,
+                                counterId = counter.id
+                            )
+                        }
+                    },
+                    enabled = counter.count > 0
                 ) {
                     Icon(
                         imageVector = Icons.Default.Remove,

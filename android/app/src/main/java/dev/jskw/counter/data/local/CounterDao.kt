@@ -23,6 +23,9 @@ interface CounterDao {
     @Query("UPDATE counters SET isPinned = :isPinned WHERE id = :id")
     suspend fun updatePinnedStatus(id: String, isPinned: Boolean)
 
+    @Query("UPDATE counters SET isPinned = 0")
+    suspend fun unpinAll()
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCounter(counter: Counter)
 

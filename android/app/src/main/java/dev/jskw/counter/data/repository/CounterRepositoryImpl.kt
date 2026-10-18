@@ -70,6 +70,7 @@ class CounterRepositoryImpl(
 
     override suspend fun decrementCounter(id: String): Counter? {
         val current = counterDao.getCounterById(id) ?: return null
+        if (current.count <= 0) return current
         val updated = current.copy(count = current.count - 1)
         counterDao.updateCounter(updated)
         AppLog.d(TAG, "decrementCounter: id=$id local count updated to ${updated.count}")
@@ -86,6 +87,9 @@ class CounterRepositoryImpl(
 
     override suspend fun updatePinnedStatus(id: String, isPinned: Boolean): Counter? {
         val current = counterDao.getCounterById(id) ?: return null
+        if (isPinned) {
+            counterDao.unpinAll()
+        }
         val updated = current.copy(isPinned = isPinned)
         counterDao.updateCounter(updated)
         AppLog.d(TAG, "updatePinnedStatus: id=$id isPinned=$isPinned")

@@ -45,7 +45,19 @@ class FakeCounterDao : CounterDao {
         updateFlow()
     }
 
+    override suspend fun unpinAll() {
+        countersMap.keys.forEach { k ->
+            countersMap[k] = countersMap[k]!!.copy(isPinned = false)
+        }
+        updateFlow()
+    }
+
     override suspend fun updatePinnedStatus(id: String, isPinned: Boolean) {
+        if (isPinned) {
+            countersMap.keys.forEach { k ->
+                countersMap[k] = countersMap[k]!!.copy(isPinned = false)
+            }
+        }
         val current = countersMap[id]
         if (current != null) {
             countersMap[id] = current.copy(isPinned = isPinned)
@@ -147,6 +159,14 @@ class CounterRepositoryTest {
     }
 
     @Test
+    fun testDecrementDoesNotGoNegative() = runTest {
+        val counter = repository.createCounter(title = "Zero Count", initialCount = 0)
+
+        val decremented = repository.decrementCounter(counter.id)
+        assertEquals(0, decremented?.count)
+    }
+
+    @Test
     fun testTogglePinAndPinnedCounters() = runTest {
         val counter = repository.createCounter(title = "Pinned Item", initialCount = 0)
         assertFalse(counter.isPinned)
@@ -165,6 +185,25 @@ class CounterRepositoryTest {
 
         val emptyPinnedList = repository.getPinnedCounters().first()
         assertTrue(emptyPinnedList.isEmpty())
+    }
+
+    @Test
+    fun testPinningNewCounterUnpinsExisting() = runTest {
+        val counter1 = repository.createCounter(title = "Counter 1", initialCount = 0)
+        val counter2 = repository.createCounter(title = "Counter 2", initialCount = 0)
+
+        repository.togglePin(counter1.id)
+        val pinnedList1 = repository.getPinnedCounters().first()
+        assertEquals(1, pinnedList1.size)
+        assertEquals(counter1.id, pinnedList1[0].id)
+
+        repository.togglePin(counter2.id)
+        val pinnedList2 = repository.getPinnedCounters().first()
+        assertEquals(1, pinnedList2.size)
+        assertEquals(counter2.id, pinnedList2[0].id)
+
+        val retrieved1 = repository.getCounterById(counter1.id)
+        assertFalse(retrieved1!!.isPinned)
     }
 
     @Test

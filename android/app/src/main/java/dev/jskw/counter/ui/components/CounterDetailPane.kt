@@ -249,7 +249,8 @@ fun CounterDetailPane(
             ) {
                 // Decrement Button (-)
                 Button(
-                    onClick = { onDecrement(counter.id) },
+                    onClick = { if (counter.count > 0) onDecrement(counter.id) },
+                    enabled = counter.count > 0,
                     modifier = Modifier
                         .weight(1f)
                         .height(80.dp),

@@ -119,7 +119,8 @@ fun AddCounterDialog(
                         IconButton(
                             onClick = {
                                 if (count > 0) countText = (count - 1).toString()
-                            }
+                            },
+                            enabled = count > 0
                         ) {
                             Icon(Icons.Rounded.Remove, contentDescription = "Decrement initial count")
                         }
