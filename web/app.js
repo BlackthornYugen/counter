@@ -1,4 +1,4 @@
-// Quantum Counter Client Application
+// JSKW Counter Client Application
 
 let currentMode = "3uuid"; // "3uuid" or "2uuid"
 let currentProtocol = "ws"; // "ws" or "sse"
@@ -968,7 +968,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      showToast("Counter Room registered! UUID hashes saved to SQLite.", "success");
+      showToast("Counter room registered successfully.", "success");
       activeCounterId = data.counter_id;
       activeTokens = { ...data.roles };
       currentCounterLabel = currentCounterLabel || `Counter ${data.counter_id.substring(0, 8)}`;

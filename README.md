@@ -1,4 +1,4 @@
-# Quantum Counter Server ⚡
+# JSKW Counter
 
 A high-performance Python server for real-time counter rooms supporting **WebSockets**, **Server-Sent Events (SSE)**, and **REST** calls.
 

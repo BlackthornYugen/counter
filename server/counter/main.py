@@ -20,8 +20,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 app = FastAPI(
-    title="Counter Room Server",
-    description="WebSockets, Server-Sent Events (SSE), and REST API with hashed UUID role-based access control.",
+    title="JSKW Counter",
+    description="Real-time WebSockets, Server-Sent Events (SSE), and REST API.",
     version="1.0.0",
     lifespan=lifespan,
 )

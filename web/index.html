@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Quantum Counter - WebSockets, SSE & REST Counter Room</title>
-  <meta name="description" content="High-performance Python counter server with WebSockets, Server-Sent Events (SSE), and hashed UUID role-based security.">
+  <title>JSKW Counter</title>
+  <meta name="description" content="JSKW Counter - Real-time synchronized counter rooms.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -18,8 +18,7 @@
       <div class="logo-group">
         <div class="logo-icon">⚡</div>
         <div>
-          <h1 class="app-title">Quantum Counter</h1>
-          <p class="app-subtitle">Real-time WebSocket & SSE Synchronization with SQLite Token Hashing</p>
+          <h1 class="app-title">JSKW Counter</h1>
         </div>
       </div>
       <div class="header-badges">
@@ -95,7 +94,7 @@
           </div>
 
           <button type="button" class="btn-primary" id="btn-register">
-            <span>⚡</span> Register & Store Hashes in SQLite
+            <span>⚡</span> Register Counter
           </button>
         </form>
 
@@ -112,13 +111,13 @@
           </div>
 
           <details style="margin-top:14px; font-size:12px; color:var(--text-muted); cursor:pointer;">
-            <summary style="font-weight:600; color:var(--text-dim); margin-bottom:6px;">View SQLite SHA-256 Hashes</summary>
+            <summary style="font-weight:600; color:var(--text-dim); margin-bottom:6px;">View SHA-256 Hashes</summary>
             <table class="token-table">
               <thead>
                 <tr>
                   <th>Role</th>
                   <th>Secret UUID</th>
-                  <th>SQLite SHA-256 Hash</th>
+                  <th>SHA-256 Hash</th>
                   <th>Action</th>
                 </tr>
               </thead>
@@ -203,7 +202,7 @@
         <!-- Dynamic Visual Counter Stage -->
         <div class="counter-stage">
           <div class="counter-value" id="counter-value-display">0</div>
-          <div class="counter-label" id="counter-room-status">Quantum Counter</div>
+          <div class="counter-label" id="counter-room-status">JSKW Counter</div>
           <div id="delta-container"></div>
         </div>
 
