@@ -67,6 +67,14 @@ cd server
 uv run pytest -v
 ```
 
+### 3. Build & Push Multi-Arch Docker Image
+
+Build and push the multi-architecture container image for both ARM and x86 (`linux/amd64,linux/arm64`):
+
+```bash
+docker buildx build --platform linux/amd64,linux/arm64 -t git.tower.jskw.dev/webapps/counter:latest --push .
+```
+
 ---
 
 ## 🐍 Programmatic Python API
