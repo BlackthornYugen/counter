@@ -12,7 +12,7 @@ android {
         applicationId = "dev.jskw.count"
         minSdk = 25
         targetSdk = 37
-        versionCode = 4
+        versionCode = 10
         versionName = "1.0"
     }
 
@@ -54,6 +54,6 @@ dependencies {
     implementation(libs.ktor.serialization.kotlinx.json)
     implementation(libs.play.services.wearable)
 
-    debugImplementation(libs.androidx.wear.compose.ui.tooling)
+    implementation(libs.androidx.wear.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }
