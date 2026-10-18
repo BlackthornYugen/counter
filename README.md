@@ -69,11 +69,15 @@ uv run pytest -v
 
 ### 3. Build & Push Multi-Arch Docker Image
 
-Build and push the multi-architecture container image for both ARM and x86 (`linux/amd64,linux/arm64`):
+Build and push the multi-architecture container image for both ARM and x86 (`linux/amd64,linux/arm64`), embedding the current Git commit hash into the build:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -t git.tower.jskw.dev/webapps/counter:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 \
+  --build-arg GIT_HASH=$(git rev-parse HEAD) \
+  -t git.tower.jskw.dev/webapps/counter:latest --push .
 ```
+
+The Git commit hash is exposed on the server via the `/health` endpoint (`{"status": "ok", "service": "counter-server", "git_hash": "..."}`).
 
 ### 4. Deploy / Update Remote Kubernetes Deployment
 

@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
-from counter.config import HOST, PORT, STATIC_DIR
+from counter.config import HOST, PORT, STATIC_DIR, GIT_HASH
 from counter.db import init_db
 from counter.api import router as api_router
 
@@ -84,7 +84,7 @@ async def serve_js() -> FileResponse:
 
 @app.get("/health", tags=["system"])
 async def health_check() -> dict[str, str]:
-    return {"status": "ok", "service": "counter-server"}
+    return {"status": "ok", "service": "counter-server", "git_hash": GIT_HASH}
 
 
 def run() -> None:

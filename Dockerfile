@@ -15,7 +15,9 @@ COPY web /app/web
 # Create persistent storage directory for SQLite database
 RUN mkdir -p /data
 
-ENV PYTHONUNBUFFERED=1 \
+ARG GIT_HASH="dev"
+ENV GIT_HASH=${GIT_HASH} \
+    PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/server \
     COUNTER_HOST=0.0.0.0 \
     COUNTER_PORT=8000 \

@@ -19,3 +19,7 @@ if isinstance(raw_port, str) and raw_port.startswith("tcp://"):
 PORT = int(raw_port)
 
 
+GIT_HASH = os.environ.get("GIT_HASH", os.environ.get("GIT_COMMIT", "dev"))
+
+
+

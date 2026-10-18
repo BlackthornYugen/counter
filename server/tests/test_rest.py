@@ -197,7 +197,10 @@ async def test_proxy_headers_and_custom_subpath() -> None:
         }
         res = await client.get("/health", headers=headers)
         assert res.status_code == 200
-        assert res.json() == {"status": "ok", "service": "counter-server"}
+        data = res.json()
+        assert data["status"] == "ok"
+        assert data["service"] == "counter-server"
+        assert "git_hash" in data
 
 
 
