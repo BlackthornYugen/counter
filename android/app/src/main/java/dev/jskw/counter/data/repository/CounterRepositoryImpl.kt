@@ -1,17 +1,28 @@
 package dev.jskw.counter.data.repository
 
+import android.content.Context
 import dev.jskw.counter.data.local.CounterDao
 import dev.jskw.counter.data.model.Counter
 import dev.jskw.counter.data.remote.CounterApiService
+import dev.jskw.counter.sync.WearSyncUtils
 import dev.jskw.counter.util.AppLog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.firstOrNull
 import java.util.UUID
 
 class CounterRepositoryImpl(
     private val counterDao: CounterDao,
-    private val apiService: CounterApiService
+    private val apiService: CounterApiService,
+    private val context: Context? = null
 ) : CounterRepository {
+
+    private suspend fun pushAllToWear() {
+        if (context != null) {
+            val all = counterDao.getAllCounters().firstOrNull() ?: emptyList()
+            WearSyncUtils.pushCountersToWear(context, all)
+        }
+    }
 
     override fun getAllCounters(): Flow<List<Counter>> {
         return counterDao.getAllCounters()
@@ -37,6 +48,7 @@ class CounterRepositoryImpl(
         )
         counterDao.insertCounter(newCounter)
         AppLog.d(TAG, "createCounter: created local counter id=${newCounter.id}, title='$title', count=$initialCount")
+        pushAllToWear()
         return newCounter
     }
 
@@ -45,6 +57,7 @@ class CounterRepositoryImpl(
         val updated = current.copy(count = current.count + 1)
         counterDao.updateCounter(updated)
         AppLog.d(TAG, "incrementCounter: id=$id local count updated to ${updated.count}")
+        pushAllToWear()
         if (current.isPublished && current.updateUuid != null) {
             AppLog.d(TAG, "incrementCounter: dispatching remote increment for token=${current.updateUuid}")
             val remoteResult = apiService.incrementCounter(current.updateUuid)
@@ -60,6 +73,7 @@ class CounterRepositoryImpl(
         val updated = current.copy(count = current.count - 1)
         counterDao.updateCounter(updated)
         AppLog.d(TAG, "decrementCounter: id=$id local count updated to ${updated.count}")
+        pushAllToWear()
         if (current.isPublished && current.updateUuid != null) {
             AppLog.d(TAG, "decrementCounter: dispatching remote decrement for token=${current.updateUuid}")
             val remoteResult = apiService.decrementCounter(current.updateUuid)
@@ -75,6 +89,7 @@ class CounterRepositoryImpl(
         val updated = current.copy(isPinned = isPinned)
         counterDao.updateCounter(updated)
         AppLog.d(TAG, "updatePinnedStatus: id=$id isPinned=$isPinned")
+        pushAllToWear()
         return updated
     }
 
@@ -93,10 +108,12 @@ class CounterRepositoryImpl(
             }
         }
         counterDao.deleteCounterById(id)
+        pushAllToWear()
     }
 
     override suspend fun updateCounter(counter: Counter) {
         counterDao.updateCounter(counter)
+        pushAllToWear()
     }
 
     override suspend fun publishCounter(id: String): Result<Counter> {

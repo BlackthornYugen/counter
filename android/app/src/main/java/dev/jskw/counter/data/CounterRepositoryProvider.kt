@@ -21,7 +21,8 @@ object CounterRepositoryProvider {
         val apiService = KtorCounterApiService()
         return CounterRepositoryImpl(
             counterDao = database.counterDao(),
-            apiService = apiService
+            apiService = apiService,
+            context = context.applicationContext
         )
     }
 }

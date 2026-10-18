@@ -75,6 +75,17 @@ class CounterViewModel(
 
     init {
         syncPublishedCounters()
+        observeCountersForWearSync()
+    }
+
+    private fun observeCountersForWearSync() {
+        viewModelScope.launch {
+            repository.getAllCounters().collect { counters ->
+                if (counters.isEmpty()) {
+                    repository.createCounter("default watch counter", 0)
+                }
+            }
+        }
     }
 
     fun selectCounter(id: String?) {

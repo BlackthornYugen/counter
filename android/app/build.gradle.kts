@@ -15,7 +15,7 @@ android {
         applicationId = "dev.jskw.count"
         minSdk = 24
         targetSdk = 37
-        versionCode = 3
+        versionCode = 4
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -78,6 +78,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.core)
+    implementation(libs.kotlinx.serialization.json)
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.content.negotiation)
@@ -90,6 +91,7 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.okhttpSse)
     implementation(libs.play.services.location)
+    implementation(libs.play.services.wearable)
     implementation(libs.retrofit)
     testImplementation(libs.androidx.core)
     testImplementation(libs.androidx.junit)

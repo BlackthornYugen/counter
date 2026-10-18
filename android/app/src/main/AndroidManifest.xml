@@ -19,6 +19,18 @@
             android:name=".receiver.PinnedCounterReceiver"
             android:exported="false" />
 
+        <service
+            android:name=".sync.PhoneWearableListenerService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
+                <data
+                    android:host="*"
+                    android:pathPrefix="/counter_action"
+                    android:scheme="wear" />
+            </intent-filter>
+        </service>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
