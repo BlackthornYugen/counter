@@ -243,13 +243,13 @@
         <div class="sim-panel">
           <div class="sim-panel-title">
             <span style="color:#fda4af;">👑 Client 1: Admin (WebSocket)</span>
-            <span class="status-pill connected" id="sim-ws-status"><span class="status-dot"></span> Live</span>
+            <span class="status-pill disconnected" id="sim-ws-status"><span class="status-dot"></span> Offline</span>
           </div>
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div style="font-family:var(--font-mono); font-size:32px; font-weight:700;" id="sim-ws-val">0</div>
             <div style="display:flex; gap:8px;">
-              <button type="button" class="btn-counter btn-dec" id="sim-btn-dec" style="padding:8px 14px; font-size:14px;">-1</button>
-              <button type="button" class="btn-counter btn-inc" id="sim-btn-inc" style="padding:8px 14px; font-size:14px;">+1</button>
+              <button type="button" class="btn-counter btn-dec" id="sim-btn-dec" style="padding:8px 14px; font-size:14px;" disabled>-1</button>
+              <button type="button" class="btn-counter btn-inc" id="sim-btn-inc" style="padding:8px 14px; font-size:14px;" disabled>+1</button>
             </div>
           </div>
         </div>
@@ -258,7 +258,7 @@
         <div class="sim-panel">
           <div class="sim-panel-title">
             <span style="color:#67e8f9;">👁️ Client 2: Read-Only (SSE)</span>
-            <span class="status-pill connected" id="sim-sse-status"><span class="status-dot"></span> Live</span>
+            <span class="status-pill disconnected" id="sim-sse-status"><span class="status-dot"></span> Offline</span>
           </div>
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div style="font-family:var(--font-mono); font-size:32px; font-weight:700;" id="sim-sse-val">0</div>

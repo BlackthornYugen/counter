@@ -317,6 +317,7 @@ function disconnectRoom() {
   updateStatusPill("disconnected", "Disconnected");
   const activeBar = document.getElementById("active-link-bar");
   if (activeBar) activeBar.style.display = "none";
+  disconnectSimulator();
 }
 
 const UUIDV4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -848,6 +849,7 @@ async function handleLoadedUuids(uuids, updateHash = true, rawInput = null) {
     } else {
       connectRoomSSE(connectToken);
     }
+    initSimulator();
   } else {
     // None of the UUIDs exist in DB yet (unregistered / ready to register).
     // Usually the 3 uuids should be a read/write/admin token.
@@ -965,6 +967,7 @@ async function connectWithToken(token, updateHash = true, customLabel = null) {
     } else {
       connectRoomSSE(cleaned);
     }
+    initSimulator();
 
   } catch (err) {
     updateStatusPill("disconnected", "Network Error");
@@ -1152,36 +1155,145 @@ async function deleteCounterRoom() {
 
 // --- Multi-Client Cross-Protocol Simulator ---
 
+function updateSimStatusPill(elementId, status, text) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  el.className = `status-pill ${status}`;
+  el.innerHTML = `<span class="status-dot"></span> ${text}`;
+}
+
+function updateSimButtons(enabled) {
+  const btnInc = document.getElementById("sim-btn-inc");
+  const btnDec = document.getElementById("sim-btn-dec");
+  if (btnInc) btnInc.disabled = !enabled;
+  if (btnDec) btnDec.disabled = !enabled;
+}
+
+function disconnectSimulator() {
+  if (simSocket) {
+    simSocket.onopen = null;
+    simSocket.onclose = null;
+    simSocket.onerror = null;
+    simSocket.onmessage = null;
+    simSocket.close();
+    simSocket = null;
+  }
+  if (simEventSource) {
+    simEventSource.close();
+    simEventSource = null;
+  }
+  updateSimStatusPill("sim-ws-status", "disconnected", "Offline");
+  updateSimStatusPill("sim-sse-status", "disconnected", "Offline");
+  updateSimButtons(false);
+}
+
 function initSimulator() {
   const adminToken = activeTokens["admin"];
   const roToken = activeTokens["read_only"];
-  if (!adminToken || !roToken) return;
+
+  // Sync simulator counter display with active value
+  const simWsVal = document.getElementById("sim-ws-val");
+  const simSseVal = document.getElementById("sim-sse-val");
+  if (simWsVal) simWsVal.textContent = currentCounterValue;
+  if (simSseVal) simSseVal.textContent = currentCounterValue;
 
   // 1. Sim Client 1: Admin via WebSocket
-  if (simSocket) simSocket.close();
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  simSocket = new WebSocket(`${protocol}//${window.location.host}/ws/${adminToken}`);
+  if (adminToken) {
+    if (simSocket) {
+      simSocket.onopen = null;
+      simSocket.onclose = null;
+      simSocket.onerror = null;
+      simSocket.onmessage = null;
+      simSocket.close();
+      simSocket = null;
+    }
+    updateSimStatusPill("sim-ws-status", "connecting", "Connecting...");
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    simSocket = new WebSocket(`${protocol}//${window.location.host}/ws/${adminToken}`);
 
-  simSocket.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      if (data.value !== undefined) {
-        document.getElementById("sim-ws-val").textContent = data.value;
-      }
-    } catch(e) {}
-  };
+    simSocket.onopen = () => {
+      updateSimStatusPill("sim-ws-status", "connected", "Live");
+      updateSimButtons(true);
+    };
+
+    simSocket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.value !== undefined) {
+          if (simWsVal) simWsVal.textContent = data.value;
+        }
+        if (data.type === "update" && !roomSocket && !roomEventSource) {
+          updateCounterDisplay(data.value, data.delta);
+          addEventToStream(data);
+        } else if (data.type === "error") {
+          showToast(`[Admin WS Error] ${data.message}`, "error");
+        }
+      } catch (e) {}
+    };
+
+    simSocket.onerror = () => {
+      updateSimStatusPill("sim-ws-status", "disconnected", "Offline");
+      updateSimButtons(false);
+    };
+
+    simSocket.onclose = () => {
+      updateSimStatusPill("sim-ws-status", "disconnected", "Offline");
+      updateSimButtons(false);
+    };
+  } else {
+    if (simSocket) {
+      simSocket.close();
+      simSocket = null;
+    }
+    updateSimStatusPill("sim-ws-status", "disconnected", "No Admin Key");
+    updateSimButtons(false);
+  }
 
   // 2. Sim Client 2: Read-Only via SSE
-  if (simEventSource) simEventSource.close();
-  simEventSource = new EventSource(`/sse/${roToken}`);
-  simEventSource.addEventListener("connected", (event) => {
-    const data = JSON.parse(event.data);
-    document.getElementById("sim-sse-val").textContent = data.value;
-  });
-  simEventSource.addEventListener("update", (event) => {
-    const data = JSON.parse(event.data);
-    document.getElementById("sim-sse-val").textContent = data.value;
-  });
+  if (roToken) {
+    if (simEventSource) {
+      simEventSource.close();
+      simEventSource = null;
+    }
+    updateSimStatusPill("sim-sse-status", "connecting", "Connecting...");
+    simEventSource = new EventSource(`/sse/${roToken}`);
+
+    simEventSource.onopen = () => {
+      updateSimStatusPill("sim-sse-status", "connected", "Live");
+    };
+
+    simEventSource.addEventListener("connected", (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.value !== undefined && simSseVal) {
+          simSseVal.textContent = data.value;
+        }
+      } catch (e) {}
+    });
+
+    simEventSource.addEventListener("update", (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.value !== undefined && simSseVal) {
+          simSseVal.textContent = data.value;
+        }
+        if (data.type === "update" && !roomSocket && !roomEventSource) {
+          updateCounterDisplay(data.value, data.delta);
+          addEventToStream(data);
+        }
+      } catch (e) {}
+    });
+
+    simEventSource.onerror = () => {
+      updateSimStatusPill("sim-sse-status", "disconnected", "Offline");
+    };
+  } else {
+    if (simEventSource) {
+      simEventSource.close();
+      simEventSource = null;
+    }
+    updateSimStatusPill("sim-sse-status", "disconnected", "No Read-Only Key");
+  }
 }
 
 // --- Event Listeners and Initialization ---
@@ -1463,11 +1575,21 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("sim-btn-inc").addEventListener("click", () => {
     if (simSocket && simSocket.readyState === WebSocket.OPEN) {
       simSocket.send(JSON.stringify({ action: "increment", delta: 1 }));
+    } else if (!activeTokens["admin"]) {
+      showToast("Cannot increment: Admin UUID is required for Client 1.", "error");
+    } else {
+      showToast("Admin WebSocket is reconnecting, please try again in a moment...", "info");
+      initSimulator();
     }
   });
   document.getElementById("sim-btn-dec").addEventListener("click", () => {
     if (simSocket && simSocket.readyState === WebSocket.OPEN) {
       simSocket.send(JSON.stringify({ action: "decrement", delta: 1 }));
+    } else if (!activeTokens["admin"]) {
+      showToast("Cannot decrement: Admin UUID is required for Client 1.", "error");
+    } else {
+      showToast("Admin WebSocket is reconnecting, please try again in a moment...", "info");
+      initSimulator();
     }
   });
 
@@ -1511,6 +1633,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const initialStatusEl = document.getElementById("counter-room-status");
   if (initialStatusEl) initialStatusEl.textContent = "No Room Connected";
   updateStatusPill("disconnected", "Not Connected");
+  disconnectSimulator();
 
   // Check if URL has hashtag on initial load
   const initialHash = window.location.hash;
