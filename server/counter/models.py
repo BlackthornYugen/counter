@@ -1,54 +1,99 @@
 from typing import Any
-from pydantic import BaseModel, Field, model_validator, field_validator
+import uuid
+from pydantic import BaseModel, Field, model_validator, field_validator, PrivateAttr
+from counter.metrics import classify_registration_payload
 
 
 ROLE_PERMISSIONS = {
-    "read_only": {
+    "viewer": {
         "can_read": True,
         "can_write": False,
         "can_delete": False,
+        "can_own": False,
         "can_admin": False,
     },
-    "read_write": {
+    "editor": {
         "can_read": True,
         "can_write": True,
         "can_delete": False,
+        "can_own": False,
         "can_admin": False,
     },
-    "admin": {
+    "owner": {
         "can_read": True,
         "can_write": True,
         "can_delete": True,
+        "can_own": True,
         "can_admin": True,
     },
 }
 
+# Backward compatibility for legacy role lookups
+ROLE_PERMISSIONS["read_only"] = ROLE_PERMISSIONS["viewer"]
+ROLE_PERMISSIONS["read_write"] = ROLE_PERMISSIONS["editor"]
+ROLE_PERMISSIONS["admin"] = ROLE_PERMISSIONS["owner"]
+
 
 class RegisterRequest(BaseModel):
-    # Support camelCase and snake_case
-    readOnlyUUID: str | None = Field(default=None, alias="read_only_uuid")
-    readWriteUUID: str | None = Field(default=None, alias="read_write_uuid")
-    adminUUID: str | None = Field(default=None, alias="admin_uuid")
+    viewer: str | None = None
+    editor: str | None = None
+    owner: str | None = None
     initial_value: int = Field(default=0)
+
+    _key_format: str = PrivateAttr(default="legacy")
 
     model_config = {
         "populate_by_name": True,
     }
 
-    @model_validator(mode="before")
-    @classmethod
-    def handle_field_aliases(cls, data: Any) -> Any:
-        if isinstance(data, dict):
-            # Map alternate spellings if provided
-            if "readOnlyUUID" not in data and "read_only_uuid" in data:
-                data["readOnlyUUID"] = data["read_only_uuid"]
-            if "readWriteUUID" not in data and "read_write_uuid" in data:
-                data["readWriteUUID"] = data["read_write_uuid"]
-            if "adminUUID" not in data and "admin_uuid" in data:
-                data["adminUUID"] = data["admin_uuid"]
-        return data
+    @property
+    def readOnlyUUID(self) -> str | None:
+        return self.viewer
 
-    @field_validator("readOnlyUUID", "readWriteUUID", "adminUUID")
+    @property
+    def readWriteUUID(self) -> str | None:
+        return self.editor
+
+    @property
+    def adminUUID(self) -> str | None:
+        return self.owner
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def handle_field_aliases(cls, data: Any, handler: Any) -> Any:
+        detected_format = "legacy"
+        if isinstance(data, dict):
+            # Detect key format for Prometheus metrics
+            detected_format = classify_registration_payload(data)
+            data = dict(data)
+
+            # Map legacy aliases to new target fields
+            # viewer: viewer, readOnlyUUID, read_only_uuid, read_only
+            if "viewer" not in data or data["viewer"] is None:
+                for k in ("readOnlyUUID", "read_only_uuid", "read_only"):
+                    if k in data and data[k] is not None:
+                        data["viewer"] = data[k]
+                        break
+
+            # editor: editor, readWriteUUID, read_write_uuid, read_write
+            if "editor" not in data or data["editor"] is None:
+                for k in ("readWriteUUID", "read_write_uuid", "read_write"):
+                    if k in data and data[k] is not None:
+                        data["editor"] = data[k]
+                        break
+
+            # owner: owner, adminUUID, admin_uuid, admin
+            if "owner" not in data or data["owner"] is None:
+                for k in ("adminUUID", "admin_uuid", "admin"):
+                    if k in data and data[k] is not None:
+                        data["owner"] = data[k]
+                        break
+
+        instance = handler(data)
+        instance._key_format = detected_format
+        return instance
+
+    @field_validator("viewer", "editor", "owner")
     @classmethod
     def validate_uuid_v4(cls, v: str | None, info: Any) -> str | None:
         if v is None:
@@ -56,7 +101,6 @@ class RegisterRequest(BaseModel):
         cleaned = str(v).strip()
         if not cleaned:
             return None
-        import uuid
         try:
             parsed = uuid.UUID(cleaned)
         except (ValueError, TypeError, AttributeError):
@@ -72,12 +116,15 @@ class RegisterResponse(BaseModel):
     roles: dict[str, str]
     token_hashes: dict[str, str]
     message: str
+    access: str | None = None
+    access_legacy: str | None = None
 
 
 class CounterInfoResponse(BaseModel):
     counter_id: str
     value: int
     access: str
+    access_legacy: str | None = None
     permissions: dict[str, bool]
     created_at: str
     updated_at: str
@@ -96,6 +143,7 @@ class DeleteResponse(BaseModel):
 class ActionResponse(BaseModel):
     counter_id: str
     access: str
+    access_legacy: str | None = None
     action: str
     delta: int | None
     value: int
@@ -109,10 +157,12 @@ class EventItem(BaseModel):
     delta: int | None
     value: int
     role: str
+    role_legacy: str | None = None
     timestamp: str
 
 
 class EventListResponse(BaseModel):
     counter_id: str
     access: str
+    access_legacy: str | None = None
     events: list[EventItem]

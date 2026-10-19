@@ -36,46 +36,53 @@ def test_websocket_flow():
         assert msg["type"] == "error"
         assert msg["code"] == "invalid_token"
 
-    # 3. Connect with Admin token
+    # 3. Connect with Owner (admin) token
     with client.websocket_connect(f"/ws/{admin}") as ws_admin:
         init_admin = ws_admin.receive_json()
         assert init_admin["type"] == "connected"
-        assert init_admin["access"] == "admin"
+        assert init_admin["access"] == "owner"
+        assert init_admin["access_legacy"] == "admin"
         assert init_admin["value"] == 10
+        assert init_admin["permissions"]["can_own"] is True
         assert init_admin["permissions"]["can_admin"] is True
 
-        # 4. Connect Read-Only token in parallel
+        # 4. Connect Viewer (read-only) token in parallel
         with client.websocket_connect(f"/ws/{ro}") as ws_ro:
             init_ro = ws_ro.receive_json()
             assert init_ro["type"] == "connected"
-            assert init_ro["access"] == "read_only"
+            assert init_ro["access"] == "viewer"
+            assert init_ro["access_legacy"] == "read_only"
             assert init_ro["value"] == 10
             assert init_ro["permissions"]["can_write"] is False
 
-            # 5. Read-only tries to increment -> receives error
+            # 5. Viewer tries to increment -> receives error
             ws_ro.send_json({"action": "increment", "delta": 1})
             err_msg = ws_ro.receive_json()
             assert err_msg["type"] == "error"
             assert err_msg["code"] == "permission_denied"
+            assert err_msg["access"] == "viewer"
+            assert err_msg["access_legacy"] == "read_only"
 
-            # 6. Admin increments by 5
+            # 6. Owner increments by 5
             ws_admin.send_json({"action": "increment", "delta": 5})
 
-            # Admin receives ack and broadcast update
+            # Owner receives ack and broadcast update
             msg1 = ws_admin.receive_json()
             # Depending on ordering between broadcast and direct ack, both arrive:
             msgs_admin = [msg1, ws_admin.receive_json()]
             update_ev = next(m for m in msgs_admin if m.get("type") == "update")
             assert update_ev["value"] == 15
             assert update_ev["delta"] == 5
+            assert update_ev["access"] == "owner"
+            assert update_ev["access_legacy"] == "admin"
 
-            # Read-only socket simultaneously receives the broadcast update!
+            # Viewer socket simultaneously receives the broadcast update!
             ro_update = ws_ro.receive_json()
             assert ro_update["type"] == "update"
             assert ro_update["value"] == 15
             assert ro_update["delta"] == 5
 
-            # 7. Admin decrements by 2
+            # 7. Owner decrements by 2
             ws_admin.send_json({"action": "decrement", "delta": 2})
             _ = ws_admin.receive_json()
             _ = ws_admin.receive_json()

@@ -14,6 +14,9 @@ spec:
         - name: image.repository
           value: git.tower.jskw.dev/webapps/counter
       valuesObject:
+        service:
+          type: NodePort
+          nodePort: 30800
         ingress:
           enabled: true
           hosts:

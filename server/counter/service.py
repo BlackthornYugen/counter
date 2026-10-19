@@ -14,6 +14,7 @@ from counter.db import (
 )
 from counter.models import ROLE_PERMISSIONS
 from counter.hub import hub
+from counter import config
 
 
 class CounterServiceError(Exception):
@@ -66,7 +67,7 @@ def _validate_uuid_str(val: str, field_name: str) -> str:
 
 
 async def register_async(
-    read_only_uuid: str | None = None,
+    viewer_uuid: str | None = None,
     second_uuid: str | None = None,
     third_uuid: str | None = None,
     *,
@@ -76,44 +77,44 @@ async def register_async(
     """Registers a new counter room with 2 or 3 UUIDs.
 
     Signature styles supported:
-    1. register(readOnlyUUID, readWriteUUID, adminUUID)
-    2. register(readOnlyUUID, adminUUID)
+    1. register(viewer, editor, owner) or register(readOnlyUUID, readWriteUUID, adminUUID)
+    2. register(viewer, owner) or register(readOnlyUUID, adminUUID)
     3. register() -> auto-generates all 3 UUIDs
     """
     await init_db(db_path)
 
     # Determine role assignment based on arguments passed
     if third_uuid is not None:
-        # 3 UUIDs provided: (readOnly, readWrite, admin)
-        ro_uuid = read_only_uuid
-        rw_uuid = second_uuid
-        admin_uuid = third_uuid
+        # 3 UUIDs provided: (viewer, editor, owner)
+        v_uuid = viewer_uuid
+        e_uuid = second_uuid
+        o_uuid = third_uuid
     elif second_uuid is not None:
-        # 2 UUIDs provided: (readOnly, admin)
-        ro_uuid = read_only_uuid
-        rw_uuid = None
-        admin_uuid = second_uuid
+        # 2 UUIDs provided: (viewer, owner)
+        v_uuid = viewer_uuid
+        e_uuid = None
+        o_uuid = second_uuid
     else:
         # 0 or 1 provided: if 0, auto-generate
-        ro_uuid = read_only_uuid or str(uuid.uuid4())
-        rw_uuid = str(uuid.uuid4())
-        admin_uuid = str(uuid.uuid4())
+        v_uuid = viewer_uuid or str(uuid.uuid4())
+        e_uuid = str(uuid.uuid4())
+        o_uuid = str(uuid.uuid4())
 
     # If any specific role was None when 3 expected, allow auto-generation
-    if ro_uuid is None:
-        ro_uuid = str(uuid.uuid4())
-    if admin_uuid is None:
-        admin_uuid = str(uuid.uuid4())
+    if v_uuid is None:
+        v_uuid = str(uuid.uuid4())
+    if o_uuid is None:
+        o_uuid = str(uuid.uuid4())
 
-    ro_uuid = _validate_uuid_str(ro_uuid, "readOnlyUUID")
-    admin_uuid = _validate_uuid_str(admin_uuid, "adminUUID")
-    if rw_uuid is not None:
-        rw_uuid = _validate_uuid_str(rw_uuid, "readWriteUUID")
+    v_uuid = _validate_uuid_str(v_uuid, "viewer")
+    o_uuid = _validate_uuid_str(o_uuid, "owner")
+    if e_uuid is not None:
+        e_uuid = _validate_uuid_str(e_uuid, "editor")
 
     # Check for uniqueness among provided tokens
-    tokens_to_check = [ro_uuid, admin_uuid]
-    if rw_uuid is not None:
-        tokens_to_check.append(rw_uuid)
+    tokens_to_check = [v_uuid, o_uuid]
+    if e_uuid is not None:
+        tokens_to_check.append(e_uuid)
 
     normalized_tokens = [t.lower() for t in tokens_to_check]
     if len(normalized_tokens) != len(set(normalized_tokens)):
@@ -128,14 +129,14 @@ async def register_async(
         )
 
     token_role_map: dict[str, str] = {
-        ro_uuid: "read_only",
-        admin_uuid: "admin",
+        v_uuid: "viewer",
+        o_uuid: "owner",
     }
-    if rw_uuid is not None:
-        token_role_map[rw_uuid] = "read_write"
+    if e_uuid is not None:
+        token_role_map[e_uuid] = "editor"
 
     counter_id = str(uuid.uuid4())
-    record = await insert_counter(
+    await insert_counter(
         counter_id=counter_id,
         token_role_map=token_role_map,
         initial_value=initial_value,
@@ -143,28 +144,31 @@ async def register_async(
     )
 
     roles_dict = {
-        "read_only": ro_uuid,
-        "admin": admin_uuid,
+        "viewer": v_uuid,
+        "owner": o_uuid,
     }
-    if rw_uuid is not None:
-        roles_dict["read_write"] = rw_uuid
+    if e_uuid is not None:
+        roles_dict["editor"] = e_uuid
+
+    roles_dict = config.maybe_add_legacy_roles(roles_dict)
 
     token_hashes = {
         role: hash_token(token)
-        for token, role in token_role_map.items()
+        for role, token in roles_dict.items()
     }
 
-    return {
+    result = {
         "counter_id": counter_id,
         "value": initial_value,
         "roles": roles_dict,
         "token_hashes": token_hashes,
         "message": f"Counter room created with {len(token_role_map)} access tokens.",
     }
+    return result
 
 
 def register(
-    read_only_uuid: str | None = None,
+    viewer_uuid: str | None = None,
     second_uuid: str | None = None,
     third_uuid: str | None = None,
     *,
@@ -173,8 +177,8 @@ def register(
 ) -> dict[str, Any]:
     """Synchronous interface for register().
     Can be called directly as:
-      register(readOnlyUUID, readWriteUUID, adminUUID)
-      register(readOnlyUUID, adminUUID)
+      register(viewer, editor, owner)
+      register(viewer, owner)
     """
     try:
         loop = asyncio.get_running_loop()
@@ -182,7 +186,7 @@ def register(
         loop = None
 
     coro = register_async(
-        read_only_uuid=read_only_uuid,
+        viewer_uuid=viewer_uuid,
         second_uuid=second_uuid,
         third_uuid=third_uuid,
         initial_value=initial_value,
@@ -205,7 +209,7 @@ async def get_counter_info_by_token(token: str, db_path: str | None = None) -> d
 
     counter, role = result
     permissions = ROLE_PERMISSIONS[role]
-    return {
+    resp = {
         "counter_id": counter["id"],
         "value": counter["value"],
         "access": role,
@@ -213,6 +217,7 @@ async def get_counter_info_by_token(token: str, db_path: str | None = None) -> d
         "created_at": counter["created_at"],
         "updated_at": counter["updated_at"],
     }
+    return config.maybe_add_legacy_access(resp)
 
 
 async def mutate_counter(
@@ -260,11 +265,15 @@ async def mutate_counter(
         "delta": actual_delta,
         "value": new_val,
         "role": role,
+        "access": role,
         "timestamp": event_data["timestamp"],
     }
+    if config.DUAL_ROLE_KEYS and role in config.LEGACY_ROLE_MAP:
+        broadcast_payload["role_legacy"] = config.LEGACY_ROLE_MAP[role]
+        broadcast_payload["access_legacy"] = config.LEGACY_ROLE_MAP[role]
     await hub.broadcast(counter["id"], broadcast_payload)
 
-    return {
+    res = {
         "counter_id": counter["id"],
         "access": role,
         "action": action,
@@ -273,6 +282,7 @@ async def mutate_counter(
         "timestamp": event_data["timestamp"],
         "event_id": event_data["id"],
     }
+    return config.maybe_add_legacy_access(res)
 
 
 async def get_recent_events_by_token(
@@ -284,15 +294,20 @@ async def get_recent_events_by_token(
 
     counter, role = result
     events = await get_counter_events(counter["id"], limit=limit, db_path=db_path)
-    return {
+    if config.DUAL_ROLE_KEYS:
+        for ev in events:
+            if "role" in ev and ev["role"] in config.LEGACY_ROLE_MAP:
+                ev["role_legacy"] = config.LEGACY_ROLE_MAP[ev["role"]]
+    resp = {
         "counter_id": counter["id"],
         "access": role,
         "events": events,
     }
+    return config.maybe_add_legacy_access(resp)
 
 
 async def delete_counter(token: str, db_path: str | None = None) -> dict[str, Any]:
-    """Validates token and admin role permissions, deletes the counter from the database,
+    """Validates token and owner role permissions, deletes the counter from the database,
     broadcasts deletion event to subscribers, and closes room connections.
     """
     result = await resolve_token(token, db_path=db_path)
@@ -303,7 +318,7 @@ async def delete_counter(token: str, db_path: str | None = None) -> dict[str, An
     permissions = ROLE_PERMISSIONS[role]
     if not permissions["can_delete"]:
         raise PermissionDeniedError(
-            f"Role '{role}' cannot delete counter. Only 'admin' role can delete counter."
+            f"Role '{role}' cannot delete counter. Only 'owner' role can delete counter."
         )
 
     counter_id = counter["id"]
@@ -315,14 +330,13 @@ async def delete_counter(token: str, db_path: str | None = None) -> dict[str, An
         {
             "type": "deleted",
             "counter_id": counter_id,
-            "message": "Counter room has been permanently deleted by admin.",
+            "message": "Counter room has been permanently deleted by owner.",
         },
     )
-    await hub.close_room(counter_id, reason="Counter room deleted by admin")
+    await hub.close_room(counter_id, reason="Counter room deleted by owner")
 
     return {
         "counter_id": counter_id,
         "deleted": deleted,
         "message": "Counter room successfully deleted.",
     }
-

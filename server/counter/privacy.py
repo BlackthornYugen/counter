@@ -35,7 +35,7 @@ def get_known_versions() -> List[str]:
         ]
         if found:
             return sorted(found)
-    return ["2026-10-16", "2026-10-18"]
+    return ["2026-10-16", "2026-10-18", "2026-10-19"]
 
 
 def resolve_effective_policy(target_date_str: str) -> Optional[str]:
