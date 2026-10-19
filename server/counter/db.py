@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS counters (
 CREATE TABLE IF NOT EXISTS counter_tokens (
     token_hash TEXT PRIMARY KEY,
     counter_id TEXT NOT NULL,
-    role TEXT NOT NULL CHECK(role IN ('read_only', 'read_write', 'admin')),
+    role TEXT NOT NULL CHECK(role IN ('viewer', 'editor', 'owner')),
     created_at TEXT NOT NULL,
     FOREIGN KEY (counter_id) REFERENCES counters(id) ON DELETE CASCADE
 );
@@ -62,10 +62,62 @@ async def get_connection(db_path: str | None = None) -> AsyncGenerator[aiosqlite
         yield conn
 
 
+async def migrate_db_roles(conn: aiosqlite.Connection) -> None:
+    """Migrates existing database records and constraints from legacy role names
+    ('read_only', 'read_write', 'admin') to new role names ('viewer', 'editor', 'owner').
+    """
+    cursor = await conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='counter_tokens'"
+    )
+    row = await cursor.fetchone()
+    if row and row[0]:
+        table_sql = row[0]
+        # Check if table still has the legacy CHECK constraint
+        if "read_only" in table_sql or "owner" not in table_sql:
+            await conn.execute("PRAGMA foreign_keys = OFF;")
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS counter_tokens_new (
+                    token_hash TEXT PRIMARY KEY,
+                    counter_id TEXT NOT NULL,
+                    role TEXT NOT NULL CHECK(role IN ('viewer', 'editor', 'owner')),
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (counter_id) REFERENCES counters(id) ON DELETE CASCADE
+                );
+            """)
+            await conn.execute("""
+                INSERT OR IGNORE INTO counter_tokens_new (token_hash, counter_id, role, created_at)
+                SELECT token_hash, counter_id,
+                    CASE role
+                        WHEN 'read_only' THEN 'viewer'
+                        WHEN 'read_write' THEN 'editor'
+                        WHEN 'admin' THEN 'owner'
+                        ELSE role
+                    END,
+                    created_at
+                FROM counter_tokens;
+            """)
+            await conn.execute("DROP TABLE counter_tokens;")
+            await conn.execute("ALTER TABLE counter_tokens_new RENAME TO counter_tokens;")
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_counter_tokens_counter_id ON counter_tokens(counter_id);"
+            )
+            await conn.execute("PRAGMA foreign_keys = ON;")
+
+    # Migrate events history
+    cursor_ev = await conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='counter_events'"
+    )
+    if await cursor_ev.fetchone():
+        await conn.execute("UPDATE counter_events SET role = 'viewer' WHERE role = 'read_only';")
+        await conn.execute("UPDATE counter_events SET role = 'editor' WHERE role = 'read_write';")
+        await conn.execute("UPDATE counter_events SET role = 'owner' WHERE role = 'admin';")
+
+
 async def init_db(db_path: str | None = None) -> None:
-    """Initializes the database schema if tables do not exist."""
+    """Initializes the database schema if tables do not exist and runs role migrations."""
     async with get_connection(db_path) as conn:
         await conn.executescript(SCHEMA_SQL)
+        await migrate_db_roles(conn)
         await conn.commit()
 
 
@@ -119,7 +171,7 @@ async def insert_counter(
             INSERT INTO counter_events (counter_id, action, delta, value_after, role, timestamp)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (counter_id, "create", None, initial_value, "admin", now),
+            (counter_id, "create", None, initial_value, "owner", now),
         )
         event_id = cursor.lastrowid
         await conn.commit()

@@ -2,10 +2,15 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 import uvicorn
 from fastapi import FastAPI, Request, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+from prometheus_client import make_asgi_app
+
+from counter.metrics import record_registration_metric, normalize_client_user_agent
 
 from counter.config import HOST, PORT, STATIC_DIR, GIT_HASH
 from counter.db import init_db
@@ -49,8 +54,45 @@ async def proxy_prefix_middleware(request: Request, call_next) -> Response:
     return await call_next(request)
 
 
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    if request.url.path == "/api/counters/register":
+        user_agent = request.headers.get("user-agent")
+        client_version = request.headers.get("x-client-version") or request.headers.get("x-app-version")
+        client_id = normalize_client_user_agent(user_agent, client_version)
+        record_registration_metric(key_format="legacy", client=client_id, status="error")
+    return await request_validation_exception_handler(request, exc)
+
+
 # Mount API router
 app.include_router(api_router)
+
+# Prometheus metrics endpoint (/metrics) - internal only, blocked on public ingress
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from fastapi import HTTPException
+
+BLOCKED_METRICS_HOST_DOMAINS = (
+    "jskw.dev",
+    "jskw.ca",
+    "jsteelkw.dev",
+    "jsteelkw.ca",
+    "jsteel.dev",
+    "jsteel.ca",
+)
+
+
+@app.get("/metrics", include_in_schema=False)
+@app.get("/metrics/", include_in_schema=False)
+async def metrics_endpoint(request: Request) -> Response:
+    """Internal metrics endpoint. Blocked on public ingress."""
+    forwarded_host = request.headers.get("x-forwarded-host", "")
+    host = request.headers.get("host", "")
+
+    # Reject requests arriving via external ingress or public domain names
+    if forwarded_host or any(domain in host for domain in BLOCKED_METRICS_HOST_DOMAINS):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 # Mount static assets directory (web/ folder)
 STATIC_DIR.mkdir(parents=True, exist_ok=True)

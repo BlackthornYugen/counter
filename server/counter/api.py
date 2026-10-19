@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 from typing import AsyncGenerator
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Query, Body, status
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Query, Body, Request, status
 from fastapi.responses import StreamingResponse
 
 from counter.models import (
@@ -28,32 +28,45 @@ from counter.service import (
 )
 from counter.db import resolve_token, get_counter_events
 from counter.hub import hub
+from counter.metrics import record_registration_metric, normalize_client_user_agent
+from counter import config
 
 logger = logging.getLogger("counter.api")
 router = APIRouter()
 
 
 @router.post("/api/counters/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
-async def api_register_counter(payload: RegisterRequest) -> RegisterResponse:
+async def api_register_counter(request: Request, payload: RegisterRequest) -> RegisterResponse:
     """Registers a new counter room with 2 or 3 UUIDs.
     Can accept:
-      - readOnlyUUID, readWriteUUID, adminUUID (3 UUIDs)
-      - readOnlyUUID, adminUUID (2 UUIDs)
+      - viewer, editor, owner (new format)
+      - readOnlyUUID, readWriteUUID, adminUUID (legacy format)
     """
+    key_format = getattr(payload, "_key_format", "legacy")
+    user_agent = request.headers.get("user-agent")
+    client_version = request.headers.get("x-client-version") or request.headers.get("x-app-version")
+    client_id = normalize_client_user_agent(user_agent, client_version)
     try:
         result = await register_async(
-            read_only_uuid=payload.readOnlyUUID,
-            second_uuid=payload.readWriteUUID if payload.readWriteUUID else payload.adminUUID,
-            third_uuid=payload.adminUUID if payload.readWriteUUID else None,
+            viewer_uuid=payload.viewer,
+            second_uuid=payload.editor if payload.editor else payload.owner,
+            third_uuid=payload.owner if payload.editor else None,
             initial_value=payload.initial_value,
         )
+        record_registration_metric(key_format=key_format, client=client_id, status="success")
         return RegisterResponse(**result)
     except DuplicateTokenError as e:
+        record_registration_metric(key_format=key_format, client=client_id, status="error")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except TokenAlreadyRegisteredError as e:
+        record_registration_metric(key_format=key_format, client=client_id, status="error")
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except ValueError as e:
+        record_registration_metric(key_format=key_format, client=client_id, status="error")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        record_registration_metric(key_format=key_format, client=client_id, status="error")
+        raise
 
 
 @router.get("/api/counters/{token}", response_model=CounterInfoResponse)
@@ -68,7 +81,7 @@ async def api_get_counter_info(token: str) -> CounterInfoResponse:
 
 @router.post("/api/counters/{token}/increment", response_model=ActionResponse)
 async def api_increment_counter(token: str, req: ActionRequest = Body(default_factory=ActionRequest)) -> ActionResponse:
-    """Increments the counter. Forbidden for read_only role."""
+    """Increments the counter. Forbidden for viewer role."""
     try:
         res = await mutate_counter(token=token, action="increment", delta=req.delta)
         return ActionResponse(**res)
@@ -80,7 +93,7 @@ async def api_increment_counter(token: str, req: ActionRequest = Body(default_fa
 
 @router.post("/api/counters/{token}/decrement", response_model=ActionResponse)
 async def api_decrement_counter(token: str, req: ActionRequest = Body(default_factory=ActionRequest)) -> ActionResponse:
-    """Decrements the counter. Forbidden for read_only role."""
+    """Decrements the counter. Forbidden for viewer role."""
     try:
         res = await mutate_counter(token=token, action="decrement", delta=req.delta)
         return ActionResponse(**res)
@@ -92,7 +105,7 @@ async def api_decrement_counter(token: str, req: ActionRequest = Body(default_fa
 
 @router.delete("/api/counters/{token}", response_model=DeleteResponse)
 async def api_delete_counter(token: str) -> DeleteResponse:
-    """Deletes the counter room. Admin role only."""
+    """Deletes the counter room. Owner role only."""
     try:
         res = await delete_counter(token=token)
         return DeleteResponse(**res)
@@ -140,6 +153,7 @@ async def sse_event_generator(token: str) -> AsyncGenerator[str, None]:
             "value": counter["value"],
             "recent_events": recent_events,
         }
+        config.maybe_add_legacy_access(initial_msg)
         yield f"event: connected\ndata: {json.dumps(initial_msg)}\n\n"
 
         # 2. Stream subsequent update events and heartbeat pings
@@ -225,7 +239,7 @@ async def _handle_websocket(websocket: WebSocket, effective_token: str | None) -
     try:
         # Send initial connected greeting with user's access role and current value
         recent_events = await get_counter_events(counter_id, limit=20)
-        await websocket.send_text(json.dumps({
+        initial_msg = {
             "type": "connected",
             "protocol": "websocket",
             "counter_id": counter_id,
@@ -233,7 +247,9 @@ async def _handle_websocket(websocket: WebSocket, effective_token: str | None) -
             "permissions": ROLE_PERMISSIONS[role],
             "value": counter["value"],
             "recent_events": recent_events,
-        }))
+        }
+        config.maybe_add_legacy_access(initial_msg)
+        await websocket.send_text(json.dumps(initial_msg))
 
         # Message loop
         while True:
@@ -276,12 +292,14 @@ async def _handle_websocket(websocket: WebSocket, effective_token: str | None) -
                     }))
                     return
                 except PermissionDeniedError as e:
-                    await websocket.send_text(json.dumps({
+                    err_msg = {
                         "type": "error",
                         "code": "permission_denied",
                         "access": role,
                         "message": str(e),
-                    }))
+                    }
+                    config.maybe_add_legacy_access(err_msg)
+                    await websocket.send_text(json.dumps(err_msg))
                     continue
 
             delta = msg.get("delta", 1)
@@ -293,20 +311,24 @@ async def _handle_websocket(websocket: WebSocket, effective_token: str | None) -
                     delta=delta,
                 )
                 # Confirm back to this socket as well (it also receives the broadcast)
-                await websocket.send_text(json.dumps({
+                ack_msg = {
                     "type": "action_ack",
                     "status": "success",
                     "action": action,
                     "value": result["value"],
                     "access": role,
-                }))
+                }
+                config.maybe_add_legacy_access(ack_msg)
+                await websocket.send_text(json.dumps(ack_msg))
             except PermissionDeniedError as e:
-                await websocket.send_text(json.dumps({
+                err_msg = {
                     "type": "error",
                     "code": "permission_denied",
                     "access": role,
                     "message": str(e),
-                }))
+                }
+                config.maybe_add_legacy_access(err_msg)
+                await websocket.send_text(json.dumps(err_msg))
             except ValueError as e:
                 await websocket.send_text(json.dumps({
                     "type": "error",
