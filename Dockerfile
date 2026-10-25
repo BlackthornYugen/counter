@@ -26,7 +26,9 @@ COPY --from=frontend /app/web/node_modules /app/web/node_modules
 RUN mkdir -p /data
 
 ARG GIT_HASH="dev"
+ARG VERSION=""
 ENV GIT_HASH=${GIT_HASH} \
+    VERSION=${VERSION} \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/server \
     COUNTER_HOST=0.0.0.0 \

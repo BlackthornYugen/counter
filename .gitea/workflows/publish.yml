@@ -96,6 +96,7 @@ jobs:
           provenance: false
           platforms: linux/amd64,linux/arm64
           build-args: |
+            GIT_HASH=${{ steps.version.outputs.sha }}
             VERSION=${{ steps.version.outputs.version }}
             REPO_URL=${{ github.server_url }}/${{ github.repository }}
           tags: ${{ steps.prep.outputs.tags }}
