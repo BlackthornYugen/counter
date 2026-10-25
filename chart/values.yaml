@@ -18,6 +18,11 @@ ingress:
   # Array of domains for the ingress
   hosts:
     - counter.jskw.dev
+    - counter.jskw.ca
+    - counter.jsteelkw.ca
+    - counter.jsteelkw.dev
+    - counter.jsteel.ca
+    - counter.jsteel.dev
 
 resources:
   limits:

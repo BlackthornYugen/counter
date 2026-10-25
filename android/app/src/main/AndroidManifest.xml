@@ -53,6 +53,11 @@
                 <data android:scheme="http" />
                 <data android:scheme="https" />
                 <data android:host="counter.jskw.dev" />
+                <data android:host="counter.jskw.ca" />
+                <data android:host="counter.jsteelkw.ca" />
+                <data android:host="counter.jsteelkw.dev" />
+                <data android:host="counter.jsteel.ca" />
+                <data android:host="counter.jsteel.dev" />
             </intent-filter>
 
             <!-- Custom Scheme Deep Links -->
